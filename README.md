@@ -9,6 +9,10 @@ Windows 向けアーカイブマネージャ GUI アプリケーション。
 - **閲覧・展開・圧縮** をひとつのウィンドウで操作
 - **ドラッグ＆ドロップ** でアーカイブを開く、またはファイルを圧縮
 - **パスワード保護**・圧縮レベル選択に対応
+- **ListView 列ヘッダクリック**による昇順/降順ソート
+- **スプリッタ**でフォルダツリーとファイル一覧の幅を自由に調整
+- ウィンドウサイズ・スプリッタ位置を **INI に自動保存**
+- 7-Zip Zstandard DLL が提供する追加コーデック（Brotli / LZ4 / LZ5 / Lizard / FastLZMA2 / Zstandard）を自動認識
 - **DPI 対応** (Per-Monitor V2)
 
 ## 動作環境
@@ -58,6 +62,8 @@ cmake --build build_release
 
 - 左ペイン: TreeView でフォルダ階層を表示
 - 右ペイン: ListView でファイル一覧を表示（名前 / サイズ / 圧縮後 / 種類 / 更新日時）
+- **列ヘッダクリック** で昇順 / 降順ソート
+- **スプリッタ** で左右ペインの幅を調整可能（位置は INI に自動保存）
 - ListView で複数選択して選択ファイルのみ展開可能
 
 ### 圧縮
@@ -66,7 +72,10 @@ cmake --build build_release
 - RAR は WinRAR (`rar.exe`) をサブプロセスとして起動
 - その他は `7z.dll` の `IOutArchive` を使用
 - 圧縮レベル: 0（無圧縮）〜 9（超圧縮）
-- メソッド選択（7z: LZMA2/LZMA/PPMd/BZip2/Deflate/Zstandard、ZIP: Deflate/BZip2/LZMA/Zstandard/Store）
+- メソッド選択（7z: LZMA2 / LZMA / PPMd / BZip2 / Deflate / Zstandard / Brotli / LZ4 / LZ5 / Lizard / FastLZMA2、ZIP: Deflate / BZip2 / LZMA / Zstandard / Brotli / LZ4 / Store）
+- ロード済みの 7z.dll が対応しないコーデックは自動的にメニューから除外
+- **詳細オプション**ダイアログで辞書サイズ・ワードサイズ・ソリッドブロック・スレッド数などを設定可能
+- RAR 形式は専用の詳細オプション（圧縮方式 / リカバリレコード / ヘッダ暗号化）を持つ
 
 ### 展開
 
@@ -94,6 +103,11 @@ DefaultFormat=7z         ; 既定の圧縮形式
 CompressionLevel=5       ; 0-9
 7zDllPath=               ; 7z.dll の絶対パス（空なら AileEx.exe と同じディレクトリ）
 UnrarDllPath=            ; unrar.dll の絶対パス（空なら AileEx.exe と同じディレクトリ）
+WindowX=                 ; ウィンドウ位置（自動保存）
+WindowY=
+WindowW=
+WindowH=
+SplitterPos=             ; スプリッタ位置（自動保存）
 ```
 
 ## アーキテクチャ概要

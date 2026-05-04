@@ -1,4 +1,4 @@
-# AileEx アーキテクチャ
+﻿# AileEx アーキテクチャ
 
 ## ディレクトリ構成
 
@@ -142,3 +142,4 @@ PostMessageW(hwnd, WM_APP_DONE, hr, 0) ──→
 | `DragAcceptFiles` / `DragQueryFileW` | D&D 対応 |
 | `CreateAcceleratorTable` | キーボードショートカット |
 | `SetProcessDpiAwarenessContext` | DPI 対応（PerMonitorV2） |
+| `IFileOpenDialog` (Shell) | フォルダ選択ダイアログ（展開先・設定ダイアログ） |

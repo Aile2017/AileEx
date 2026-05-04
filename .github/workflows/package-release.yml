@@ -1,0 +1,130 @@
+name: Package Release
+
+# Creates a tagged release with a ZIP of AileEx.exe + README.md
+# Tag format: AileEx_[version]_[yyyymmdd]
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version string (e.g. 1.0.0). Leave empty to use git describe'
+        required: false
+        default: ''
+      date:
+        description: 'Date for tag (yyyymmdd). Leave empty to use today'
+        required: false
+        default: ''
+      prerelease:
+        description: 'Mark as pre-release'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  # ── MSVC build ───────────────────────────────────────────────────────────────
+  build-msvc:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC x64 environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure CMake
+        run: cmake -B build_release -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build_release --config Release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: exe-msvc
+          path: build_release\AileEx.exe
+
+  # ── Assemble ZIP and publish release ─────────────────────────────────────────
+  package-and-release:
+    needs: [build-msvc]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        shell: pwsh
+        run: |
+          $input_ver = "${{ inputs.version }}"
+          if ($input_ver -ne "") {
+            $ver = $input_ver
+          } else {
+            $ver = (git describe --tags --always 2>$null)
+            if (-not $ver) { $ver = "dev" }
+          }
+          Write-Output "ver=$ver" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Host "Version: $ver"
+
+      - name: Determine tag name
+        id: tag
+        shell: pwsh
+        run: |
+          $input_date = "${{ inputs.date }}"
+          if ($input_date -ne "") {
+            $d = $input_date
+          } else {
+            $d = (Get-Date).ToString("yyyyMMdd")
+          }
+          $ver = "${{ steps.version.outputs.ver }}"
+          $tag = "AileEx_${ver}_${d}"
+          Write-Output "tag=$tag"           | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Output "zipname=${tag}.zip" | Out-File $env:GITHUB_OUTPUT -Append
+          Write-Host "Tag: $tag"
+
+      - name: Download built EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: exe-msvc
+          path: built
+
+      - name: Assemble package folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path pkg | Out-Null
+          Copy-Item built\AileEx.exe pkg\AileEx.exe
+          Copy-Item README.md        pkg\README.md
+          Write-Host "Package contents:"
+          Get-ChildItem pkg -Recurse | Format-Table FullName, Length
+
+      - name: Create ZIP
+        shell: pwsh
+        run: |
+          $zip = "${{ steps.tag.outputs.zipname }}"
+          Compress-Archive -Path pkg\* -DestinationPath $zip
+          Write-Host "Created: $zip ($([Math]::Round((Get-Item $zip).Length/1KB)) KB)"
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          body: |
+            ## AileEx ${{ steps.version.outputs.ver }}
+
+            Built from commit ${{ github.sha }} (`${{ github.ref_name }}`)
+
+            ### Package contents (`${{ steps.tag.outputs.zipname }}`)
+
+            | File | Description |
+            |------|-------------|
+            | `AileEx.exe` | Executable (MSVC x64) |
+            | `README.md`  | Overview and usage |
+
+            > **実行時の依存 DLL** は同梱していません。
+            > `7z.dll`（7-Zip または 7-Zip Zstandard）が必要です。詳細は README を参照してください。
+          files: ${{ steps.tag.outputs.zipname }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

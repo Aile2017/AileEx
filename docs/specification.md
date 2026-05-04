@@ -31,6 +31,8 @@
 
 - 左ペイン: TreeView (フォルダ階層、固定幅 220px)
 - 右ペイン: ListView (ファイル一覧、列: 名前/サイズ/圧縮後/種類/更新日時)
+  - **列ヘッダクリック**で昇順/降順ソート（再クリックで反転）
+- ペイン間に**スプリッタ**あり（マウスでドラッグして幅を調整）
 - 上部: ツールバー（展開・追加・設定）
 - 下部: ステータスバー（エントリ数・進捗表示）
 - ドラッグ&ドロップ対応:
@@ -43,7 +45,12 @@
 - RAR は WinRAR (rar.exe) のサブプロセスを起動
 - それ以外は 7z.dll の `IOutArchive` を使用
 - 圧縮レベル: 0 (無圧縮) / 1 / 3 / 5 / 7 / 9 (超圧縮)
-- メソッド選択: 7z は LZMA2/LZMA/PPMd/BZip2/Deflate/Zstandard、ZIP は Deflate/BZip2/LZMA/Zstandard/Store
+- メソッド選択:
+  - 7z: LZMA2 / LZMA / PPMd / BZip2 / Deflate / Zstandard / Brotli / LZ4 / LZ5 / Lizard / FastLZMA2
+  - ZIP: Deflate / BZip2 / LZMA / Zstandard / Brotli / LZ4 / Store
+  - ロード済み 7z.dll が持つエンコーダーのみ表示（`GetNumberOfMethods` / `GetMethodProperty` で動的列挙）
+- **詳細オプション**ダイアログ（「詳細」ボタン）: 辞書サイズ / ワードサイズ / ソリッドブロックサイズ / スレッド数 / 追加パラメーター
+  - RAR 形式選択時は RAR 専用詳細オプション: 圧縮方式 / リカバリレコード / ヘッダ暗号化
 - パスワード保護対応（7z はヘッダ暗号化オプションあり）
 - 形式変更時に出力パスの拡張子を自動補正
 
@@ -70,9 +77,15 @@ CompressionLevel=5            ; 0-9
 7zDllPath=                    ; 7z.dll の絶対パス（空ならレジストリ自動検出 → AileEx.exe と同じディレクトリ）
 UnrarDllPath=                 ; unrar.dll の絶対パス（空なら AileEx.exe と同じディレクトリ）
 RarExePath=                   ; WinRAR.exe / Rar.exe の絶対パス（空ならレジストリ自動検出）
+WindowX=                      ; ウィンドウ位置・サイズ（自動保存）
+WindowY=
+WindowW=
+WindowH=
+SplitterPos=                  ; スプリッタ位置（自動保存）
 ```
 
 設定ダイアログから変更可能。OK で保存後、DLL は自動再読み込み。
+フォルダ選択は Explorer スタイルのダイアログ（`IFileOpenDialog + FOS_PICKFOLDERS`）を使用。
 
 ### Info ダイアログ
 
