@@ -46,10 +46,10 @@ target_link_options(AileEx PRIVATE "/MANIFEST:NO")  # マニフェストは Aile
 
 ## 実行時の DLL
 
-| DLL | 既定パス | 用途 |
+| DLL / EXE | 既定パス | 用途 |
 |---|---|---|
-| `7z.dll` | `C:\Program Files\7-Zip\7z.dll`（または AileEx.exe と同じディレクトリ） | アーカイブ全般 |
+| `7z.dll` | レジストリ `HKLM\SOFTWARE\7-Zip` の `Path64`/`Path` から自動検出 → なければ `%ProgramFiles%\7-Zip\7z.dll` → AileEx.exe と同じディレクトリ | アーカイブ全般 |
 | `unrar.dll` (`UnRAR64.dll`) | AileEx.exe と同じディレクトリ | RAR 展開（任意） |
-| `rar.exe` | レジストリ `HKLM\SOFTWARE\WinRAR` の `exe32`、なければ `%ProgramFiles%\WinRAR\rar.exe` | RAR 圧縮 |
+| `WinRAR.exe` / `Rar.exe` | レジストリ `HKLM\SOFTWARE\WinRAR` の `exe32` のディレクトリから `WinRAR.exe`（GUI 優先）→ `Rar.exe`、なければ `%ProgramFiles%\WinRAR\` から同じ順で検索 | RAR 圧縮 |
 
-設定ダイアログでパスを変更可能。
+すべて設定ダイアログでパスを上書き可能。`WinRAR.exe` を選んだ場合は GUI モード（独自進捗ウィンドウ）、`Rar.exe` を選んだ場合は stdout 解析でプログレスバーに反映。

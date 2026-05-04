@@ -1,4 +1,4 @@
-﻿#define DEFINE_7Z_GUIDS
+#define DEFINE_7Z_GUIDS
 #include "SevenZip.h"
 #include "7zip/IPassword.h"
 #include <shlwapi.h>
@@ -106,24 +106,68 @@ private:
 };
 
 // ============================================================
+// ============================================================
 // SevenZip — Load / Unload
 // ============================================================
+
+// Auto-detect 7z.dll from registry (7-Zip install) or known paths.
+std::wstring SevenZip::Find7zDll() {
+    // 7-Zip stores its install path in HKLM\SOFTWARE\7-Zip, value "Path64" or "Path"
+    for (HKEY hRoot : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) {
+        for (REGSAM sam : {(REGSAM)(KEY_READ | KEY_WOW64_64KEY),
+                           (REGSAM)(KEY_READ | KEY_WOW64_32KEY)}) {
+            HKEY hKey = nullptr;
+            if (RegOpenKeyExW(hRoot, L"SOFTWARE\\7-Zip", 0, sam, &hKey) != ERROR_SUCCESS)
+                continue;
+            for (const wchar_t* val : {L"Path64", L"Path"}) {
+                wchar_t buf[MAX_PATH] = {};
+                DWORD sz = sizeof(buf), type = 0;
+                if (RegQueryValueExW(hKey, val, nullptr, &type,
+                                     (BYTE*)buf, &sz) == ERROR_SUCCESS && type == REG_SZ) {
+                    RegCloseKey(hKey);
+                    std::wstring p(buf);
+                    if (!p.empty() && p.back() != L'\\') p += L'\\';
+                    p += L"7z.dll";
+                    if (PathFileExistsW(p.c_str())) return p;
+                }
+            }
+            RegCloseKey(hKey);
+        }
+    }
+    // Fallback: known install paths
+    for (const wchar_t* env : {L"ProgramFiles", L"ProgramFiles(x86)"}) {
+        wchar_t pf[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(env, pf, MAX_PATH)) {
+            std::wstring p = std::wstring(pf) + L"\\7-Zip\\7z.dll";
+            if (PathFileExistsW(p.c_str())) return p;
+        }
+    }
+    return {};
+}
 
 bool SevenZip::Load(const wchar_t* dllPath) {
     wchar_t buf[MAX_PATH] = {};
     if (!dllPath || !dllPath[0]) {
-        GetModuleFileNameW(nullptr, buf, MAX_PATH);
-        wchar_t* p = wcsrchr(buf, L'\\');
-        if (p) wcscpy_s(p + 1, MAX_PATH - (DWORD)(p + 1 - buf), L"7z.dll");
+        std::wstring found = Find7zDll();
+        if (!found.empty()) {
+            wcsncpy_s(buf, found.c_str(), MAX_PATH - 1);
+        } else {
+            GetModuleFileNameW(nullptr, buf, MAX_PATH);
+            wchar_t* p = wcsrchr(buf, L'\\');
+            if (p) wcscpy_s(p + 1, MAX_PATH - (DWORD)(p + 1 - buf), L"7z.dll");
+        }
         dllPath = buf;
     }
     m_hDll = LoadLibraryW(dllPath);
     if (!m_hDll) return false;
     m_pfnCreateObject = (Func_CreateObject)GetProcAddress(m_hDll, "CreateObject");
     if (!m_pfnCreateObject) { FreeLibrary(m_hDll); m_hDll = nullptr; return false; }
+    wchar_t nameBuf[MAX_PATH] = {};
+    GetModuleFileNameW(m_hDll, nameBuf, MAX_PATH);
+    const wchar_t* leaf = wcsrchr(nameBuf, L'\\');
+    m_loadedName = leaf ? (leaf + 1) : nameBuf;
     return true;
 }
-
 void SevenZip::Unload() {
     if (m_hDll) { FreeLibrary(m_hDll); m_hDll = nullptr; }
     m_pfnCreateObject = nullptr;

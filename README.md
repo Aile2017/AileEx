@@ -122,3 +122,9 @@ main()
 - [`docs/architecture.md`](docs/architecture.md) — クラス構成・スレッドモデル
 - [`docs/build.md`](docs/build.md) — ビルド手順詳細
 - [`docs/known-issues.md`](docs/known-issues.md) — 既知の落とし穴と回避策
+
+## Credits
+
+### Application Icon
+
+[Archiver - free Icon in PNG and SVG](https://icon-icons.com/icon/archiver/37045) by [icon-icons.com](https://icon-icons.com/), used under free for commercial use license.

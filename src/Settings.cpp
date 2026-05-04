@@ -9,6 +9,7 @@ void Settings::BuildIniPath() {
 void Settings::Load() {
     BuildIniPath();
     m_rarExtractor     = ReadStr(L"General", L"RarExtractor",     L"7z");
+    m_rarExePath       = ReadStr(L"General", L"RarExePath",       L"");
     m_defaultOutputDir = ReadStr(L"General", L"DefaultOutputDir", L"");
     m_defaultFormat    = ReadStr(L"General", L"DefaultFormat",    L"7z");
     m_7zDllPath        = ReadStr(L"General", L"7zDllPath",        L"");
@@ -22,6 +23,7 @@ void Settings::Load() {
 
 void Settings::Save() const {
     WriteStr(L"General", L"RarExtractor",     m_rarExtractor.c_str());
+    WriteStr(L"General", L"RarExePath",       m_rarExePath.c_str());
     WriteStr(L"General", L"DefaultOutputDir", m_defaultOutputDir.c_str());
     WriteStr(L"General", L"DefaultFormat",    m_defaultFormat.c_str());
     WriteStr(L"General", L"7zDllPath",        m_7zDllPath.c_str());

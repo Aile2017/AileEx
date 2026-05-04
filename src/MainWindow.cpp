@@ -22,8 +22,8 @@ bool MainWindow::RegisterClass(HINSTANCE hInst) {
     wc.hCursor       = LoadCursorW(nullptr, IDC_ARROW);
     wc.hbrBackground = (HBRUSH)(COLOR_3DFACE + 1);
     wc.lpszClassName = ClassName();
-    wc.hIcon         = LoadIconW(nullptr, IDI_APPLICATION);
-    wc.hIconSm       = LoadIconW(nullptr, IDI_APPLICATION);
+    wc.hIcon         = LoadIconW(hInst, MAKEINTRESOURCEW(IDI_AILEEX));
+    wc.hIconSm       = LoadIconW(hInst, MAKEINTRESOURCEW(IDI_AILEEX));
     return RegisterClassExW(&wc) != 0;
 }
 
@@ -97,9 +97,14 @@ void MainWindow::OpenArchive(const wchar_t* path) {
     SetWindowTextW(m_hwnd, title.c_str());
 
     // Update status
-    wchar_t status[256];
-    swprintf_s(status, L"%zu 個のエントリ", m_items.size());
-    SetWindowTextW(m_hStatus, status);
+    {
+        const std::wstring& dllName = m_openedWithUnrar
+            ? app.GetUnrar().GetLoadedName()
+            : app.Get7z().GetLoadedName();
+        wchar_t status[512];
+        swprintf_s(status, L"%zu 個のエントリ  [%s]", m_items.size(), dllName.c_str());
+        SetWindowTextW(m_hStatus, status);
+    }
 
     PopulateTree();
     PopulateList(L"");
@@ -157,6 +162,16 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
 
     case WM_DESTROY:
+        // Delete session temp dir tree (files opened via [閲覧])
+        if (!m_tempViewDir.empty()) {
+            SHFILEOPSTRUCTW fop = {};
+            std::wstring dir = m_tempViewDir;
+            dir += L'\0';  // double-null required by SHFileOperation
+            fop.wFunc  = FO_DELETE;
+            fop.pFrom  = dir.c_str();
+            fop.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+            SHFileOperationW(&fop);
+        }
         PostQuitMessage(0);
         return 0;
     }
@@ -182,6 +197,7 @@ void MainWindow::CreateControls(HWND hwnd) {
 
     TBBUTTON btns[] = {
         {I_IMAGENONE, ID_EXTRACT,     TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"展開"},
+        {I_IMAGENONE, ID_OPEN_ASSOC,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"閲覧"},
         {I_IMAGENONE, ID_ADD,         TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"追加"},
         {I_IMAGENONE, ID_INFO,        TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"情報"},
         {I_IMAGENONE, 0,              0,                BTNS_SEP,                   {}, 0, 0},
@@ -311,6 +327,9 @@ void MainWindow::OnCommand(WORD id) {
     case ID_EXTRACT:
         OnExtract();
         break;
+    case ID_OPEN_ASSOC:
+        OnOpenAssoc();
+        break;
     case ID_ADD:
         OnAddFiles();
         break;
@@ -370,6 +389,78 @@ void MainWindow::OnListDblClick() {
                 break;
             }
         }
+    }
+}
+
+void MainWindow::OnOpenAssoc() {
+    if (m_archivePath.empty()) return;
+    if (m_openedWithUnrar) {
+        MessageBoxW(m_hwnd,
+            L"閲覧機能は 7z.dll 使用時のみ利用できます。\n"
+            L"設定で RAR 展開エンジンを「7z.dll」に切り替えてください。",
+            L"AileEx", MB_ICONINFORMATION);
+        return;
+    }
+
+    App& app = App::Instance();
+    if (!app.Get7z().IsLoaded()) {
+        ShowError(L"7z.dll が読み込まれていません。");
+        return;
+    }
+
+    // Get single selected item
+    int sel = ListView_GetNextItem(m_hListView, -1, LVNI_SELECTED);
+    if (sel < 0) {
+        MessageBoxW(m_hwnd, L"ファイルを選択してください。", L"AileEx", MB_ICONINFORMATION);
+        return;
+    }
+
+    LVITEMW lvi = {};
+    lvi.iItem = sel;
+    lvi.mask  = LVIF_PARAM;
+    ListView_GetItem(m_hListView, &lvi);
+    UINT32 idx = (UINT32)lvi.lParam;
+    if (idx >= (UINT32)m_items.size()) return;
+
+    const ArchiveItem& it = m_items[idx];
+    if (it.isDir) {
+        MessageBoxW(m_hwnd, L"フォルダは閲覧できません。ファイルを選択してください。",
+                    L"AileEx", MB_ICONINFORMATION);
+        return;
+    }
+
+    // Create a session-unique temp dir on first use (deleted on exit)
+    if (m_tempViewDir.empty()) {
+        wchar_t base[MAX_PATH] = {}, buf[MAX_PATH] = {};
+        GetTempPathW(MAX_PATH, base);
+        GetTempFileNameW(base, L"aex", 0, buf);
+        DeleteFileW(buf);  // GetTempFileName creates a file; we want a dir
+        m_tempViewDir = std::wstring(buf) + L"\\";
+        SHCreateDirectoryExW(nullptr, m_tempViewDir.c_str(), nullptr);
+    }
+    const std::wstring& tempDir = m_tempViewDir;
+
+    // Extract single file to temp dir
+    std::vector<UINT32> indices = { idx };
+    HRESULT hr = app.Get7z().Extract(m_archivePath.c_str(), indices,
+                                      tempDir.c_str(), nullptr, nullptr);
+    if (FAILED(hr)) {
+        ShowError(L"ファイルの取り出しに失敗しました。", hr);
+        return;
+    }
+
+    // Build local path (archive path uses '/', convert to '\')
+    std::wstring relPath = it.path;
+    for (auto& c : relPath) if (c == L'/') c = L'\\';
+    std::wstring localPath = tempDir + relPath;
+
+    // Open with associated application
+    HINSTANCE hi = ShellExecuteW(m_hwnd, L"open", localPath.c_str(),
+                                  nullptr, nullptr, SW_SHOWNORMAL);
+    if ((INT_PTR)hi <= 32) {
+        MessageBoxW(m_hwnd,
+            (L"関連付けられたアプリケーションが見つかりませんでした。\n" + localPath).c_str(),
+            L"AileEx", MB_ICONWARNING);
     }
 }
 
@@ -569,6 +660,7 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
     if (format == L"rar") {
         RarProcess rarProc;
         bool started = rarProc.Compress(inputs, outPath.c_str(), method.c_str(),
+                                        App::Instance().GetSettings().GetRarExePath().c_str(),
                                         m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
         if (!started) {
             progDlg.Dismiss();
@@ -600,6 +692,8 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
 }
 
 // ---- Tree and List population ----
+
+static int GetIconIndex(const std::wstring& name, bool isDir);  // forward decl
 
 void MainWindow::PopulateTree() {
     TreeView_DeleteAllItems(m_hTreeView);
@@ -640,15 +734,21 @@ void MainWindow::PopulateTree() {
     const wchar_t* leaf = wcsrchr(m_archivePath.c_str(), L'\\');
     std::wstring rootName = leaf ? (leaf + 1) : m_archivePath;
 
-    TV_INSERTSTRUCTW tvi = {};
-    tvi.hInsertAfter   = TVI_LAST;
-    tvi.item.mask      = TVIF_TEXT | TVIF_PARAM;
+    // Icon indices: archive file icon for root, closed/open folder icons for sub-nodes
+    int icoArchive = GetIconIndex(m_archivePath, false);
+    int icoFolder  = GetIconIndex(L"folder", true);
 
-    tvi.hParent        = TVI_ROOT;
-    tvi.item.pszText   = const_cast<wchar_t*>(rootName.c_str());
-    tvi.item.lParam    = 0;  // index into m_folderPaths
-    HTREEITEM hRoot    = TreeView_InsertItem(m_hTreeView, &tvi);
-    treeItems[L""]     = hRoot;
+    TV_INSERTSTRUCTW tvi = {};
+    tvi.hInsertAfter      = TVI_LAST;
+    tvi.item.mask         = TVIF_TEXT | TVIF_PARAM | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
+
+    tvi.hParent           = TVI_ROOT;
+    tvi.item.pszText      = const_cast<wchar_t*>(rootName.c_str());
+    tvi.item.lParam       = 0;  // index into m_folderPaths
+    tvi.item.iImage       = icoArchive;
+    tvi.item.iSelectedImage = icoArchive;
+    HTREEITEM hRoot       = TreeView_InsertItem(m_hTreeView, &tvi);
+    treeItems[L""]        = hRoot;
 
     // Insert sub-folders in sorted order (parents guaranteed to appear before children)
     for (int i = 1; i < (int)m_folderPaths.size(); ++i) {
@@ -667,11 +767,13 @@ void MainWindow::PopulateTree() {
         const wchar_t* displayName = fp.c_str();
         if (slash != std::wstring::npos) displayName += slash + 1;
 
-        tvi.hParent       = hParent;
-        tvi.item.pszText  = const_cast<wchar_t*>(displayName);
-        tvi.item.lParam   = (LPARAM)i;
-        HTREEITEM hItem   = TreeView_InsertItem(m_hTreeView, &tvi);
-        treeItems[fp]     = hItem;
+        tvi.hParent             = hParent;
+        tvi.item.pszText        = const_cast<wchar_t*>(displayName);
+        tvi.item.lParam         = (LPARAM)i;
+        tvi.item.iImage         = icoFolder;
+        tvi.item.iSelectedImage = icoFolder;
+        HTREEITEM hItem         = TreeView_InsertItem(m_hTreeView, &tvi);
+        treeItems[fp]           = hItem;
     }
 
     TreeView_Expand(m_hTreeView, hRoot, TVE_EXPAND);
@@ -693,25 +795,55 @@ static std::wstring FormatFileSize(UINT64 bytes) {
     return buf;
 }
 
+// Returns the system image list icon index for a given filename.
+// Uses SHGFI_USEFILEATTRIBUTES so no filesystem access is needed.
+static int GetIconIndex(const std::wstring& name, bool isDir) {
+    DWORD attr = isDir ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_NORMAL;
+    SHFILEINFOW sfi = {};
+    SHGetFileInfoW(name.c_str(), attr, &sfi, sizeof(sfi),
+                   SHGFI_SYSICONINDEX | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+    return sfi.iIcon;
+}
+
 void MainWindow::PopulateList(const std::wstring& folderPath) {
     ListView_DeleteAllItems(m_hListView);
 
+    // Collect items belonging to this folder, split into dirs and files
+    struct Row { const ArchiveItem* it; };
+    std::vector<Row> dirs, files;
     for (auto& it : m_items) {
-        // Parent folder of this item
         std::wstring itemDir;
         auto pos = it.path.rfind(L'/');
         if (pos != std::wstring::npos) itemDir = it.path.substr(0, pos);
-
         if (itemDir != folderPath) continue;
-        if (it.name.empty()) continue;  // skip items with no name
+        if (it.name.empty()) continue;
+        if (it.isDir) dirs.push_back({&it});
+        else          files.push_back({&it});
+    }
 
+    // Sort each group by name ascending (case-insensitive)
+    auto byName = [](const Row& a, const Row& b) {
+        return _wcsicmp(a.it->name.c_str(), b.it->name.c_str()) < 0;
+    };
+    std::sort(dirs.begin(),  dirs.end(),  byName);
+    std::sort(files.begin(), files.end(), byName);
+
+    // Merge: folders first, then files
+    std::vector<Row> rows;
+    rows.insert(rows.end(), dirs.begin(),  dirs.end());
+    rows.insert(rows.end(), files.begin(), files.end());
+
+    for (auto& r : rows) {
+        const ArchiveItem& it = *r.it;
         int row = ListView_GetItemCount(m_hListView);
+        int iconIdx = GetIconIndex(it.name, it.isDir);
 
         LVITEMW lvi = {};
-        lvi.mask     = LVIF_TEXT | LVIF_PARAM;
+        lvi.mask     = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
         lvi.iItem    = row;
         lvi.iSubItem = 0;
         lvi.lParam   = (LPARAM)it.index;
+        lvi.iImage   = iconIdx;
         lvi.pszText  = const_cast<wchar_t*>(it.name.c_str());
         ListView_InsertItem(m_hListView, &lvi);
 

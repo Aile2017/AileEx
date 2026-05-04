@@ -104,7 +104,9 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
     if (params.format == L"rar") {
         RarProcess rar;
         if (!rar.Compress(params.inputFiles, params.outputPath.c_str(),
-                          params.method.c_str(), wnd.Hwnd(), WM_APP_PROGRESS, WM_APP_DONE)) {
+                          params.method.c_str(),
+                          m_settings.GetRarExePath().c_str(),
+                          wnd.Hwnd(), WM_APP_PROGRESS, WM_APP_DONE)) {
             progDlg.Dismiss();
             return 0;
         }

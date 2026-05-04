@@ -106,6 +106,10 @@ public:
     bool Load(const wchar_t* dllPath = nullptr);
     void Unload();
     bool IsLoaded() const { return m_hDll != nullptr; }
+    const std::wstring& GetLoadedName() const { return m_loadedName; }
+
+    // Auto-detect UnRAR64.dll from known install paths.
+    static std::wstring FindUnrarDll();
 
     bool ListArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
                      const wchar_t* password = nullptr);
@@ -116,6 +120,7 @@ public:
 
 private:
     HMODULE              m_hDll      = nullptr;
+    std::wstring         m_loadedName;
     Func_RAROpenArchiveEx m_pfnOpen  = nullptr;
     Func_RARReadHeaderEx  m_pfnRead  = nullptr;
     Func_RARProcessFileW  m_pfnProc  = nullptr;

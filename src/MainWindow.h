@@ -29,6 +29,7 @@ private:
     void OnTreeSelChanged();
     void OnListDblClick();
     void OnExtract();
+    void OnOpenAssoc();
     void OnAddFiles();
     void OnInfo();
     void OnCompress(CompressDlg::Params& params);
@@ -55,6 +56,7 @@ private:
     std::vector<std::wstring> m_folderPaths;  // sorted; index matches TreeView lParam
     WorkerThread             m_worker;
     ProgressPostSink*        m_pSink = nullptr;
+    std::wstring             m_tempViewDir;   // session temp dir; deleted on exit
 
     static constexpr int kTreeWidth = 220;
     static constexpr int kToolbarH  = 28;

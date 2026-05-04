@@ -4,6 +4,9 @@
 #include <windows.h>
 #include <commctrl.h>
 
+// Application icon
+IDI_AILEEX ICON "AileEx.ico"
+
 // Embed DPI-aware / visual-styles manifest
 1 RT_MANIFEST "manifest.xml"
 
@@ -55,7 +58,7 @@ END
 /////////////////////////////////////////////////////////////////////////////
 // Settings dialog
 /////////////////////////////////////////////////////////////////////////////
-IDD_SETTINGS DIALOGEX 0, 0, 280, 148
+IDD_SETTINGS DIALOGEX 0, 0, 280, 170
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "設定"
 FONT 9, "MS Shell Dlg", 400, 0, 0x1
@@ -68,16 +71,19 @@ BEGIN
     EDITTEXT        IDC_DEFAULT_DIR,    14,  54, 210,  14, ES_AUTOHSCROLL
     PUSHBUTTON      "参照...",           IDC_BROWSE_DIR, 228, 53,  38,  15
 
-    GROUPBOX        "DLL パス (空白 = AileEx.exe と同じディレクトリを自動使用)", IDC_STATIC, 7, 80, 266, 52
+    GROUPBOX        "実行ファイル・DLL パス", IDC_STATIC, 7, 80, 266, 74
     LTEXT           "7z.dll:",           IDC_STATIC,    14,  94,  30,   8
     EDITTEXT        IDC_7Z_DLL_PATH,    46,  92, 180,  14, ES_AUTOHSCROLL
     PUSHBUTTON      "...",               IDC_BROWSE_7Z, 230,  91,  36,  15
     LTEXT           "unrar.dll:",        IDC_STATIC,    14, 112,  30,   8
     EDITTEXT        IDC_UNRAR_DLL_PATH, 46, 110, 180,  14, ES_AUTOHSCROLL
     PUSHBUTTON      "...",               IDC_BROWSE_UNRAR, 230, 109, 36, 15
+    LTEXT           "rar.exe:",          IDC_STATIC,    14, 130,  30,   8
+    EDITTEXT        IDC_RAR_EXE_PATH,   46, 128, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...",               IDC_BROWSE_RAR, 230, 127,  36,  15
 
-    DEFPUSHBUTTON   "OK",               IDOK,          168, 128,  50,  14
-    PUSHBUTTON      "キャンセル",        IDCANCEL,      222, 128,  50,  14
+    DEFPUSHBUTTON   "OK",               IDOK,          168, 150,  50,  14
+    PUSHBUTTON      "キャンセル",        IDCANCEL,      222, 150,  50,  14
 END
 
 /////////////////////////////////////////////////////////////////////////////

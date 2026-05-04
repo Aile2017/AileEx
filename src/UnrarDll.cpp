@@ -1,12 +1,35 @@
 #include "UnrarDll.h"
 #include <shlwapi.h>
 
+// Auto-detect UnRAR64.dll / UnRAR.dll from known install paths.
+std::wstring UnrarDll::FindUnrarDll() {
+    struct { const wchar_t* env; const wchar_t* suffix; } candidates[] = {
+        { L"ProgramFiles(x86)", L"\\UnrarDLL\\x64\\UnRAR64.dll" },
+        { L"ProgramFiles",      L"\\UnrarDLL\\x64\\UnRAR64.dll" },
+        { L"ProgramFiles(x86)", L"\\UnrarDLL\\UnRAR.dll"        },
+        { L"ProgramFiles",      L"\\UnrarDLL\\UnRAR.dll"        },
+    };
+    for (auto& c : candidates) {
+        wchar_t pf[MAX_PATH] = {};
+        if (GetEnvironmentVariableW(c.env, pf, MAX_PATH)) {
+            std::wstring p = std::wstring(pf) + c.suffix;
+            if (PathFileExistsW(p.c_str())) return p;
+        }
+    }
+    return {};
+}
+
 bool UnrarDll::Load(const wchar_t* dllPath) {
     wchar_t buf[MAX_PATH] = {};
     if (!dllPath || !dllPath[0]) {
-        GetModuleFileNameW(nullptr, buf, MAX_PATH);
-        wchar_t* p = wcsrchr(buf, L'\\');
-        if (p) wcscpy_s(p + 1, MAX_PATH - (DWORD)(p + 1 - buf), L"unrar.dll");
+        std::wstring found = FindUnrarDll();
+        if (!found.empty()) {
+            wcsncpy_s(buf, found.c_str(), MAX_PATH - 1);
+        } else {
+            GetModuleFileNameW(nullptr, buf, MAX_PATH);
+            wchar_t* p = wcsrchr(buf, L'\\');
+            if (p) wcscpy_s(p + 1, MAX_PATH - (DWORD)(p + 1 - buf), L"unrar.dll");
+        }
         dllPath = buf;
     }
     m_hDll = LoadLibraryW(dllPath);
@@ -22,6 +45,10 @@ bool UnrarDll::Load(const wchar_t* dllPath) {
         FreeLibrary(m_hDll); m_hDll = nullptr;
         return false;
     }
+    wchar_t nameBuf[MAX_PATH] = {};
+    GetModuleFileNameW(m_hDll, nameBuf, MAX_PATH);
+    const wchar_t* leaf = wcsrchr(nameBuf, L'\\');
+    m_loadedName = leaf ? (leaf + 1) : nameBuf;
     return true;
 }
 

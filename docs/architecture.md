@@ -18,15 +18,17 @@ AileEx/
 │   ├── CompressDlg.h/.cpp   — 圧縮設定ダイアログ
 │   ├── ProgressDlg.h/.cpp   — モーダル進捗ダイアログ
 │   ├── SettingsDlg.h/.cpp   — 設定ダイアログ
+│   ├── InfoDlg.h/.cpp       — エントリ詳細表示ダイアログ
 │   ├── Settings.h/.cpp      — INI 読み書き
-│   ├── SevenZip.h/.cpp      — 7z.dll ラッパー (IIn/IOutArchive + コールバック)
+│   ├── SevenZip.h/.cpp      — 7z.dll ラッパー (IIn/IOutArchive + コールバック + Find7zDll)
 │   ├── UnrarDll.h/.cpp      — unrar.dll C API ラッパー
-│   ├── RarProcess.h/.cpp    — rar.exe サブプロセス
+│   ├── RarProcess.h/.cpp    — WinRAR.exe (GUI) / Rar.exe (console) サブプロセス
 │   ├── ArchiveItem.h        — アーカイブエントリ POD 構造体
 │   ├── WorkerThread.h/.cpp  — ワーカースレッド + ProgressPostSink
 │   └── resource.h           — リソース ID, WM_APP_* 定数
 ├── res/
 │   ├── AileEx.rc            — ダイアログテンプレート, アクセラレータ, マニフェスト埋込
+│   ├── AileEx.ico           — アプリケーションアイコン
 │   └── manifest.xml         — Common Controls v6, dpiAware = PerMonitorV2
 └── sdk/
     └── 7zip/                — 7-Zip SDK 自前最小ヘッダ
@@ -59,20 +61,20 @@ AileEx/
        │ (Browse)     │          │ (圧縮設定)    │
        └──────┬──────┘          └──────┬───────┘
               │                          │
-              ▼                          ▼
-       ┌─────────────┐          ┌──────────────┐
-       │ ProgressDlg │          │ RarProcess   │
-       │ (進捗表示)   │          │ (rar.exe)    │
-       └──────┬──────┘          └──────────────┘
-              │
-              ▼
-       ┌─────────────┐
-       │ WorkerThread│
-       │ + Sink      │
-       └──────┬──────┘
-              │
-              ▼
-       PostMessage WM_APP_PROGRESS / WM_APP_DONE
+       ┌──────┴──────┬─────────┐         ▼
+       ▼             ▼         ▼  ┌──────────────┐
+   ┌──────────┐ ┌─────────┐ ┌────┐│ RarProcess   │
+   │ProgressDlg│ │SettingsDlg│ │InfoDlg│ (WinRAR/Rar) │
+   └────┬─────┘ └─────────┘ └────┘└──────────────┘
+        │
+        ▼
+   ┌─────────────┐
+   │ WorkerThread│
+   │ + Sink      │
+   └──────┬──────┘
+          │
+          ▼
+   PostMessage WM_APP_PROGRESS / WM_APP_DONE
 ```
 
 ## スレッドモデル

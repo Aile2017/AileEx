@@ -1,8 +1,9 @@
-#include "RarProcess.h"
+﻿#include "RarProcess.h"
 #include "resource.h"
 #include <shlwapi.h>
 #include <string>
 #include <sstream>
+#include <cwctype>
 
 RarProcess::~RarProcess() {
     if (m_hReader != INVALID_HANDLE_VALUE) {
@@ -18,16 +19,17 @@ RarProcess::~RarProcess() {
 
 std::wstring RarProcess::QueryRegistryRarPath(HKEY hRoot) {
     HKEY hKey = nullptr;
-    // Try 64-bit registry view then 32-bit
     for (REGSAM sam : {(REGSAM)(KEY_READ | KEY_WOW64_64KEY), (REGSAM)(KEY_READ | KEY_WOW64_32KEY)}) {
         if (RegOpenKeyExW(hRoot, L"SOFTWARE\\WinRAR", 0, sam, &hKey) == ERROR_SUCCESS) {
             wchar_t buf[MAX_PATH] = {};
-            DWORD   sz   = sizeof(buf);
-            DWORD   type = 0;
+            DWORD sz = sizeof(buf), type = 0;
             if (RegQueryValueExW(hKey, L"exe32", nullptr, &type,
                                  (BYTE*)buf, &sz) == ERROR_SUCCESS && type == REG_SZ) {
                 RegCloseKey(hKey);
-                return buf;
+                // exe32 points to WinRAR.exe; return the directory
+                std::wstring exePath(buf);
+                auto slash = exePath.rfind(L'\\');
+                return (slash != std::wstring::npos) ? exePath.substr(0, slash + 1) : L"";
             }
             RegCloseKey(hKey);
         }
@@ -35,31 +37,78 @@ std::wstring RarProcess::QueryRegistryRarPath(HKEY hRoot) {
     return {};
 }
 
-std::wstring RarProcess::FindRarExe() {
-    std::wstring path = QueryRegistryRarPath(HKEY_LOCAL_MACHINE);
-    if (!path.empty()) return path;
-    path = QueryRegistryRarPath(HKEY_CURRENT_USER);
-    if (!path.empty()) return path;
+// Search for WinRAR.exe (preferred) or Rar.exe in a given directory.
+static std::wstring FindInDir(const std::wstring& dir) {
+    for (const wchar_t* name : {L"WinRAR.exe", L"Rar.exe", L"rar.exe"}) {
+        std::wstring p = dir + name;
+        if (PathFileExistsW(p.c_str())) return p;
+    }
+    return {};
+}
 
-    // Fallback: check common install locations
+std::wstring RarProcess::FindRarExe() {
+    // Try registry (returns install dir)
+    for (HKEY hRoot : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) {
+        std::wstring dir = QueryRegistryRarPath(hRoot);
+        if (!dir.empty()) {
+            auto found = FindInDir(dir);
+            if (!found.empty()) return found;
+        }
+    }
+    // Fallback: known install locations
     for (const wchar_t* env : {L"ProgramFiles", L"ProgramFiles(x86)"}) {
         wchar_t pf[MAX_PATH] = {};
         if (GetEnvironmentVariableW(env, pf, MAX_PATH)) {
-            std::wstring candidate = std::wstring(pf) + L"\\WinRAR\\rar.exe";
-            if (PathFileExistsW(candidate.c_str())) return candidate;
+            auto found = FindInDir(std::wstring(pf) + L"\\WinRAR\\");
+            if (!found.empty()) return found;
         }
     }
     return {};
 }
 
+// Returns true if the executable is WinRAR.exe (GUI, no stdout)
+static bool IsWinRarGui(const std::wstring& exePath) {
+    auto slash = exePath.rfind(L'\\');
+    std::wstring name = (slash != std::wstring::npos) ? exePath.substr(slash + 1) : exePath;
+    std::wstring lower(name.size(), 0);
+    for (size_t i = 0; i < name.size(); ++i) lower[i] = (wchar_t)towlower(name[i]);
+    return lower == L"winrar.exe";
+}
+
+// ---- WinRAR.exe GUI waiter thread ----
+DWORD WINAPI RarProcess::WinrarWaiterThread(LPVOID param) {
+    auto* ctx = static_cast<WaiterCtx*>(param);
+    while (WaitForSingleObject(ctx->hProcess, 100) == WAIT_TIMEOUT) {
+        if (*ctx->pCancel) {
+            TerminateProcess(ctx->hProcess, 1);
+            break;
+        }
+    }
+    DWORD exitCode = 0;
+    GetExitCodeProcess(ctx->hProcess, &exitCode);
+    HRESULT hr = (exitCode == 0) ? S_OK : HRESULT_FROM_WIN32(ERROR_CANCELLED);
+    PostMessageW(ctx->hwnd, ctx->doneMsg, (WPARAM)hr, 0);
+    CloseHandle(ctx->hProcess);
+    delete ctx;
+    return 0;
+}
+
 bool RarProcess::Compress(const std::vector<std::wstring>& srcPaths,
                            const wchar_t* outPath,
-                           const wchar_t* method, HWND hwndNotify,
+                           const wchar_t* method,
+                           const wchar_t* rarExePathOverride,
+                           HWND hwndNotify,
                            UINT progressMsg, UINT doneMsg) {
-    std::wstring rarExe = FindRarExe();
+    // Resolve executable: override > auto-detect
+    std::wstring rarExe;
+    if (rarExePathOverride && rarExePathOverride[0])
+        rarExe = rarExePathOverride;
+    else
+        rarExe = FindRarExe();
+
     if (rarExe.empty()) {
         MessageBoxW(hwndNotify,
-                    L"rar.exe / WinRAR が見つかりません。\n設定でパスを確認してください。",
+                    L"WinRAR.exe / Rar.exe が見つかりません。\n設定でパスを確認してください。",
                     L"AileEx", MB_ICONERROR);
         return false;
     }
@@ -71,35 +120,50 @@ bool RarProcess::Compress(const std::vector<std::wstring>& srcPaths,
     std::wstring cmd = L"\"" + rarExe + L"\" a -ep1 -r -m" + mBuf + L" \"" + outPath + L"\"";
     for (auto& f : srcPaths) cmd += L" \"" + f + L"\"";
 
-    // Create pipe for stdout
-    HANDLE hRead = nullptr, hWrite = nullptr;
-    SECURITY_ATTRIBUTES sa = { sizeof(sa), nullptr, TRUE };
-    if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return false;
-    SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
-
-    STARTUPINFOW si = {};
-    si.cb          = sizeof(si);
-    si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-    si.wShowWindow = SW_HIDE;
-    si.hStdOutput  = hWrite;
-    si.hStdError   = hWrite;
-
-    PROCESS_INFORMATION pi = {};
     std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
     cmdBuf.push_back(L'\0');
 
-    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr,
-                             TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
-    CloseHandle(hWrite);
-
-    if (!ok) { CloseHandle(hRead); return false; }
-
-    m_hProcess   = pi.hProcess;
     m_cancelFlag = false;
-    CloseHandle(pi.hThread);
+    PROCESS_INFORMATION pi = {};
 
-    auto* ctx = new ReaderCtx{hRead, hwndNotify, progressMsg, doneMsg, &m_cancelFlag};
-    m_hReader = CreateThread(nullptr, 0, StdoutReaderThread, ctx, 0, nullptr);
+    if (IsWinRarGui(rarExe)) {
+        // GUI mode: no pipe, WinRAR shows its own progress window
+        STARTUPINFOW si = {};
+        si.cb = sizeof(si);
+        BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr,
+                                 FALSE, 0, nullptr, nullptr, &si, &pi);
+        if (!ok) return false;
+        m_hProcess = pi.hProcess;
+        CloseHandle(pi.hThread);
+        auto* ctx = new WaiterCtx{m_hProcess, hwndNotify, doneMsg, &m_cancelFlag};
+        // Duplicate handle so waiter thread can close it independently
+        DuplicateHandle(GetCurrentProcess(), m_hProcess,
+                        GetCurrentProcess(), &ctx->hProcess,
+                        0, FALSE, DUPLICATE_SAME_ACCESS);
+        m_hReader = CreateThread(nullptr, 0, WinrarWaiterThread, ctx, 0, nullptr);
+    } else {
+        // Console mode (rar.exe): read stdout for progress
+        HANDLE hRead = nullptr, hWrite = nullptr;
+        SECURITY_ATTRIBUTES sa = { sizeof(sa), nullptr, TRUE };
+        if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return false;
+        SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
+
+        STARTUPINFOW si = {};
+        si.cb          = sizeof(si);
+        si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        si.wShowWindow = SW_HIDE;
+        si.hStdOutput  = hWrite;
+        si.hStdError   = hWrite;
+
+        BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr,
+                                 TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+        CloseHandle(hWrite);
+        if (!ok) { CloseHandle(hRead); return false; }
+        m_hProcess = pi.hProcess;
+        CloseHandle(pi.hThread);
+        auto* ctx = new ReaderCtx{hRead, hwndNotify, progressMsg, doneMsg, &m_cancelFlag};
+        m_hReader = CreateThread(nullptr, 0, StdoutReaderThread, ctx, 0, nullptr);
+    }
     return true;
 }
 
@@ -115,7 +179,6 @@ bool RarProcess::IsRunning() const {
 }
 
 int RarProcess::ParsePercent(const std::string& line) {
-    // WinRAR stdout: " 50%  filename.ext"
     size_t i = 0;
     while (i < line.size() && line[i] == ' ') ++i;
     if (i >= line.size() || !isdigit((unsigned char)line[i])) return -1;
@@ -140,11 +203,9 @@ DWORD WINAPI RarProcess::StdoutReaderThread(LPVOID param) {
                 if (!line.empty()) {
                     int pct = ParsePercent(line);
                     if (pct >= 0) {
-                        // Post progress; filename is the rest of the line after "XX%  "
                         size_t space = line.find('%');
                         std::wstring fname;
                         if (space != std::string::npos) {
-                            // skip "% " or "%  "
                             std::string rest = line.substr(space + 1);
                             while (!rest.empty() && rest[0] == ' ') rest.erase(0, 1);
                             int wlen = MultiByteToWideChar(CP_ACP, 0, rest.c_str(), -1, nullptr, 0);

@@ -4,6 +4,9 @@
 #define IDC_STATIC (-1)
 #endif
 
+// Icons
+#define IDI_AILEEX          101
+
 // Dialogs
 #define IDD_COMPRESS        201
 #define IDD_PROGRESS        202
@@ -34,6 +37,8 @@
 #define IDC_BROWSE_7Z       3005
 #define IDC_UNRAR_DLL_PATH  3006
 #define IDC_BROWSE_UNRAR    3007
+#define IDC_RAR_EXE_PATH    3008
+#define IDC_BROWSE_RAR      3009
 
 // Info dialog controls
 #define IDC_INFO_LIST       5001
@@ -47,6 +52,7 @@
 #define ID_DELETE           40006
 #define ID_CLOSE            40007
 #define ID_INFO             40008
+#define ID_OPEN_ASSOC       40009
 
 // Worker thread messages (WM_APP range)
 #define WM_APP_PROGRESS     (WM_APP + 1)

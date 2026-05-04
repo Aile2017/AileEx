@@ -10,6 +10,9 @@ public:
     const std::wstring& GetRarExtractor() const    { return m_rarExtractor; }
     void SetRarExtractor(const wchar_t* v)          { m_rarExtractor = v; }
 
+    const std::wstring& GetRarExePath() const       { return m_rarExePath; }
+    void SetRarExePath(const wchar_t* v)            { m_rarExePath = v; }
+
     const std::wstring& GetDefaultOutputDir() const { return m_defaultOutputDir; }
     void SetDefaultOutputDir(const wchar_t* v)      { m_defaultOutputDir = v; }
 
@@ -29,6 +32,7 @@ private:
     wchar_t m_iniPath[MAX_PATH] = {};
 
     std::wstring m_rarExtractor    = L"7z";
+    std::wstring m_rarExePath;
     std::wstring m_defaultOutputDir;
     std::wstring m_defaultFormat   = L"7z";
     int          m_compressionLevel = 5;

@@ -11,6 +11,7 @@ public:
     bool Load(const wchar_t* dllPath = nullptr);
     void Unload();
     bool IsLoaded() const { return m_hDll != nullptr; }
+    const std::wstring& GetLoadedName() const { return m_loadedName; }
 
     // Detect archive format by extension and open, filling items.
     HRESULT OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
@@ -32,8 +33,12 @@ public:
                      const wchar_t* password,
                      IExtractProgressSink* sink);
 
+    // Auto-detect installed 7z.dll from registry or known paths.
+    static std::wstring Find7zDll();
+
 private:
     HMODULE           m_hDll           = nullptr;
+    std::wstring      m_loadedName;
     Func_CreateObject m_pfnCreateObject = nullptr;
 
     HRESULT CreateInArchive(const GUID& clsid, IInArchive** ppArc);

@@ -67,11 +67,16 @@ RarExtractor=7z              ; "7z" または "unrar"
 DefaultOutputDir=             ; 既定の展開先
 DefaultFormat=7z              ; 既定の圧縮形式
 CompressionLevel=5            ; 0-9
-7zDllPath=                    ; 7z.dll の絶対パス（空なら AileEx.exe と同じディレクトリ）
+7zDllPath=                    ; 7z.dll の絶対パス（空ならレジストリ自動検出 → AileEx.exe と同じディレクトリ）
 UnrarDllPath=                 ; unrar.dll の絶対パス（空なら AileEx.exe と同じディレクトリ）
+RarExePath=                   ; WinRAR.exe / Rar.exe の絶対パス（空ならレジストリ自動検出）
 ```
 
 設定ダイアログから変更可能。OK で保存後、DLL は自動再読み込み。
+
+### Info ダイアログ
+
+ListView でファイルを選択して **i キー** または **メニューから情報** を開くと、選択したエントリの詳細情報を表示する（パス、サイズ、圧縮後サイズ、メソッド、更新日時など）。
 
 ### キーボードアクセラレータ
 

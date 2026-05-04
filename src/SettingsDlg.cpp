@@ -1,6 +1,9 @@
 #include "SettingsDlg.h"
 #include "App.h"
 #include "resource.h"
+#include "SevenZip.h"
+#include "UnrarDll.h"
+#include "RarProcess.h"
 #include <shlobj.h>
 #include <commdlg.h>
 
@@ -35,6 +38,21 @@ INT_PTR SettingsDlg::HandleMsg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BROWSE_DIR:
             OnBrowseDir(hwnd);
             break;
+        case IDC_BROWSE_RAR: {
+            wchar_t path[MAX_PATH] = {};
+            GetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH, path, MAX_PATH);
+            OPENFILENAMEW ofn = {};
+            ofn.lStructSize = sizeof(ofn);
+            ofn.hwndOwner   = hwnd;
+            ofn.lpstrFilter = L"実行ファイル\0*.exe\0";
+            ofn.lpstrFile   = path;
+            ofn.nMaxFile    = MAX_PATH;
+            ofn.Flags       = OFN_FILEMUSTEXIST;
+            ofn.lpstrTitle  = L"WinRAR.exe / Rar.exe を選択";
+            if (GetOpenFileNameW(&ofn))
+                SetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH, path);
+            break;
+        }
         case IDC_BROWSE_7Z: {
             wchar_t path[MAX_PATH] = {};
             GetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH, path, MAX_PATH);
@@ -90,9 +108,13 @@ void SettingsDlg::OnInit(HWND hwnd) {
     // Default output dir
     SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, s.GetDefaultOutputDir().c_str());
 
-    // DLL paths
-    SetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH,    s.Get7zDllPath().c_str());
-    SetDlgItemTextW(hwnd, IDC_UNRAR_DLL_PATH, s.GetUnrarDllPath().c_str());
+    // DLL / exe paths: show saved value, or auto-detect if empty
+    auto resolve = [](const std::wstring& saved, const std::wstring& detected) {
+        return saved.empty() ? detected : saved;
+    };
+    SetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH,    resolve(s.Get7zDllPath(),    SevenZip::Find7zDll()).c_str());
+    SetDlgItemTextW(hwnd, IDC_UNRAR_DLL_PATH, resolve(s.GetUnrarDllPath(), UnrarDll::FindUnrarDll()).c_str());
+    SetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH,   resolve(s.GetRarExePath(),   RarProcess::FindRarExe()).c_str());
 }
 
 void SettingsDlg::OnBrowseDir(HWND hwnd) {
@@ -121,6 +143,7 @@ bool SettingsDlg::OnOK(HWND hwnd) {
     s.SetRarExtractor(sel == 1 ? L"unrar" : L"7z");
 
     wchar_t buf[MAX_PATH] = {};
+    GetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH,   buf, MAX_PATH); s.SetRarExePath(buf);
     GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR,    buf, MAX_PATH); s.SetDefaultOutputDir(buf);
     GetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH,    buf, MAX_PATH); s.Set7zDllPath(buf);
     GetDlgItemTextW(hwnd, IDC_UNRAR_DLL_PATH, buf, MAX_PATH); s.SetUnrarDllPath(buf);
