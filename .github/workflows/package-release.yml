@@ -38,10 +38,27 @@ jobs:
       - name: Build
         run: cmake --build build_release --config Release
 
+      - name: Locate and stage EXE
+        shell: pwsh
+        run: |
+          # MSVC multi-config generator puts output in build_release\Release\
+          $candidates = @(
+            "build_release\Release\AileEx.exe",
+            "build_release\AileEx.exe"
+          )
+          $found = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $found) {
+            Write-Error "AileEx.exe not found. Searched: $($candidates -join ', ')"
+            exit 1
+          }
+          New-Item -ItemType Directory -Force -Path staged | Out-Null
+          Copy-Item $found staged\AileEx.exe
+          Write-Host "Staged from: $found"
+
       - uses: actions/upload-artifact@v4
         with:
           name: exe-msvc
-          path: build_release\AileEx.exe
+          path: staged\AileEx.exe
 
   # ── Assemble ZIP and publish release ─────────────────────────────────────────
   package-and-release:

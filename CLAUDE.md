@@ -1,4 +1,4 @@
-# AileEx — Claude 向けガイド
+﻿# AileEx — Claude 向けガイド
 
 このファイルは将来の Claude セッションが本プロジェクトで作業する際の道標。
 
@@ -102,9 +102,28 @@ delete sink
 
 過去の診断ログ実装は git 履歴の中盤にある。
 
-## 残タスク
+## コーデック列挙（7-Zip Zstandard 対応）
 
-`#6 Phase 8-9` が in_progress 状態。
+7z.dll のロード後、SevenZip::EnumerateCodecs() を呼び出してエンコーダー名一覧を取得する（GetNumberOfMethods / GetMethodProperty 使用）。
+CompressDlg はこのリストを参照し、DLL がサポートしないコーデックをメソッドコンボから除外する（supportsEncoder lambda）。
+
+- PropID: kName=1, kEncoderIsAssigned=8
+- エイリアス: store ↔ copy（ZIP の Store）、zstd ↔ zstandard
+- 7-Zip Zstandard が報告する追加コーデック: BROTLI, LZ4, LIZARD, LZ5, ZSTD, FLZMA2
+
+## フォルダ選択ダイアログ
+
+展開先・設定ダイアログの出力先選択は IFileOpenDialog + FOS_PICKFOLDERS + FOS_FORCEFILESYSTEM を使う（SHBrowseForFolder は廃止）。
+必要ヘッダ: <shobjidl_core.h>。現在値は SHCreateItemFromParsingName → SetFolder() で初期フォルダとして表示。
+
+## GitHub Actions
+
+.github/workflows/package-release.yml に workflow_dispatch トリガーのリリースワークフローを追加。
+- ilammy/msvc-dev-cmd で MSVC x64 環境構築 → CMake Release ビルド
+- AileEx.exe + README.md を ZIP に梱包し softprops/action-gh-release でリリース作成
+- タグ形式: AileEx_{version}_{yyyyMMdd}
+
+## 残タスク
 
 - [ ] 手動テストマトリクス: 各形式の閲覧・圧縮・展開・キャンセル・ドロップ
 - [ ] エラーハンドリング一括レビュー
