@@ -1,0 +1,28 @@
+# Build output
+build/
+build_release/
+
+# MSVC
+*.obj
+*.pdb
+*.ilk
+*.exp
+*.lib
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# Editor
+.vs/
+*.user
+
+# Copilot session
+.claude/
+
+# Unrelated tools in workspace root
+Noah.exe
+Noah.html
+Noah.ini

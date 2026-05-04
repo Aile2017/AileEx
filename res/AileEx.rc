@@ -1,0 +1,96 @@
+// AileEx.rc
+#pragma code_page(65001)  // UTF-8
+#include "../src/resource.h"
+#include <windows.h>
+#include <commctrl.h>
+
+// Embed DPI-aware / visual-styles manifest
+1 RT_MANIFEST "manifest.xml"
+
+/////////////////////////////////////////////////////////////////////////////
+// Compression dialog
+/////////////////////////////////////////////////////////////////////////////
+IDD_COMPRESS DIALOGEX 0, 0, 360, 180
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "圧縮"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "出力先",          IDC_STATIC,     7,   4, 346,  28
+    LTEXT           "ファイル名:",      IDC_STATIC,    14,  16,  42,   8
+    EDITTEXT        IDC_OUTPUT_PATH,   58,  14, 240,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "参照...",          IDC_BROWSE,   302,  13,  44,  15
+
+    GROUPBOX        "圧縮設定",         IDC_STATIC,     7,  38, 346,  60
+    LTEXT           "形式:",            IDC_STATIC,    14,  52,  28,   8
+    COMBOBOX        IDC_FORMAT,        44,  50,  90, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "レベル:",          IDC_STATIC,   142,  52,  30,   8
+    COMBOBOX        IDC_LEVEL,        174,  50,  80, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "メソッド:",        IDC_STATIC,    14,  70,  30,   8
+    COMBOBOX        IDC_METHOD,        46,  68, 110, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    GROUPBOX        "暗号化",           IDC_STATIC,     7, 104, 346,  38
+    LTEXT           "パスワード:",       IDC_STATIC,    14, 118,  46,   8
+    EDITTEXT        IDC_PASSWORD,       62, 116, 150,  14, ES_AUTOHSCROLL | ES_PASSWORD
+    AUTOCHECKBOX    "ヘッダを暗号化",   IDC_ENCRYPT_HDR, 220, 118, 100, 10
+
+    DEFPUSHBUTTON   "OK",              IDOK,          248, 158,  50,  14
+    PUSHBUTTON      "キャンセル",       IDCANCEL,      302, 158,  50,  14
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Progress dialog
+/////////////////////////////////////////////////////////////////////////////
+IDD_PROGRESS DIALOGEX 0, 0, 300, 76
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION
+CAPTION "処理中..."
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "",                IDC_PROGRESS_FILE,  7,  7, 286, 12, SS_ENDELLIPSIS | SS_NOPREFIX
+    CONTROL         "",                IDC_PROGRESS_BAR, "msctls_progress32",
+                    WS_CHILD | WS_VISIBLE, 7, 24, 286, 14
+    LTEXT           "",                IDC_ELAPSED,     7,  44,  160,  8
+    PUSHBUTTON      "キャンセル",       IDC_CANCEL,     116,  54,   68, 14
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Settings dialog
+/////////////////////////////////////////////////////////////////////////////
+IDD_SETTINGS DIALOGEX 0, 0, 280, 148
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "設定"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "RARファイルの展開エンジン", IDC_STATIC,   7,   4, 266,  30
+    LTEXT           "展開に使用:",       IDC_STATIC,    14,  18,  54,   8
+    COMBOBOX        IDC_RAR_EXTRACTOR,  70,  16, 110, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+
+    GROUPBOX        "デフォルト出力先",  IDC_STATIC,     7,  42, 266,  30
+    EDITTEXT        IDC_DEFAULT_DIR,    14,  54, 210,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "参照...",           IDC_BROWSE_DIR, 228, 53,  38,  15
+
+    GROUPBOX        "DLL パス (空白 = AileEx.exe と同じディレクトリを自動使用)", IDC_STATIC, 7, 80, 266, 52
+    LTEXT           "7z.dll:",           IDC_STATIC,    14,  94,  30,   8
+    EDITTEXT        IDC_7Z_DLL_PATH,    46,  92, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...",               IDC_BROWSE_7Z, 230,  91,  36,  15
+    LTEXT           "unrar.dll:",        IDC_STATIC,    14, 112,  30,   8
+    EDITTEXT        IDC_UNRAR_DLL_PATH, 46, 110, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "...",               IDC_BROWSE_UNRAR, 230, 109, 36, 15
+
+    DEFPUSHBUTTON   "OK",               IDOK,          168, 128,  50,  14
+    PUSHBUTTON      "キャンセル",        IDCANCEL,      222, 128,  50,  14
+END
+
+/////////////////////////////////////////////////////////////////////////////
+// Info dialog
+/////////////////////////////////////////////////////////////////////////////
+IDD_INFO DIALOGEX 0, 0, 340, 280
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "ファイル情報"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "", IDC_INFO_LIST, "SysListView32",
+                    LVS_REPORT | LVS_NOSORTHEADER | LVS_SINGLESEL |
+                    WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL,
+                    7, 7, 326, 253
+    DEFPUSHBUTTON   "閉じる", IDOK, 145, 263, 50, 14
+END
