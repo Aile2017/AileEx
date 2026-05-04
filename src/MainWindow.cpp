@@ -7,6 +7,7 @@
 #include "resource.h"
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shobjidl_core.h>
 #include <commdlg.h>
 #include <map>
 #include <commctrl.h>
@@ -585,15 +586,26 @@ void MainWindow::OnExtract() {
 
     // Ask destination folder
     wchar_t destDir[MAX_PATH] = {};
-    BROWSEINFOW bi = {};
-    bi.hwndOwner  = m_hwnd;
-    bi.lpszTitle  = L"展開先フォルダを選択してください";
-    bi.ulFlags    = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (!pidl) return;
-    SHGetPathFromIDListW(pidl, destDir);
-    CoTaskMemFree(pidl);
-
+    {
+        IFileOpenDialog* pfd = nullptr;
+        if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                       IID_PPV_ARGS(&pfd)))) {
+            FILEOPENDIALOGOPTIONS opts = 0;
+            pfd->GetOptions(&opts);
+            pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+            pfd->SetTitle(L"展開先フォルダを選択してください");
+            if (SUCCEEDED(pfd->Show(m_hwnd))) {
+                IShellItem* psi = nullptr;
+                if (SUCCEEDED(pfd->GetResult(&psi))) {
+                    PWSTR psz = nullptr;
+                    psi->GetDisplayName(SIGDN_FILESYSPATH, &psz);
+                    if (psz) { wcsncpy_s(destDir, psz, MAX_PATH - 1); CoTaskMemFree(psz); }
+                    psi->Release();
+                }
+            }
+            pfd->Release();
+        }
+    }
     if (!destDir[0]) return;
 
     // Collect selected indices (empty = all; ignored by unrar path)

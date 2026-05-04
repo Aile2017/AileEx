@@ -5,6 +5,7 @@
 #include "UnrarDll.h"
 #include "RarProcess.h"
 #include <shlobj.h>
+#include <shobjidl_core.h>
 #include <commdlg.h>
 
 void SettingsDlg::Show(HWND hwndParent) {
@@ -121,17 +122,37 @@ void SettingsDlg::OnBrowseDir(HWND hwnd) {
     wchar_t path[MAX_PATH] = {};
     GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, path, MAX_PATH);
 
-    BROWSEINFOW bi = {};
-    bi.hwndOwner  = hwnd;
-    bi.lpszTitle  = L"デフォルト出力先を選択";
-    bi.ulFlags    = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
-    bi.lpfn       = nullptr;
-
-    LPITEMIDLIST pidl = SHBrowseForFolderW(&bi);
-    if (pidl) {
-        SHGetPathFromIDListW(pidl, path);
-        CoTaskMemFree(pidl);
-        SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, path);
+    {
+        IFileOpenDialog* pfd = nullptr;
+        if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                       IID_PPV_ARGS(&pfd)))) {
+            FILEOPENDIALOGOPTIONS opts = 0;
+            pfd->GetOptions(&opts);
+            pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+            pfd->SetTitle(L"デフォルト出力先を選択");
+            // 現在の入力値を初期フォルダとして設定
+            if (path[0]) {
+                IShellItem* psi = nullptr;
+                if (SUCCEEDED(SHCreateItemFromParsingName(path, nullptr, IID_PPV_ARGS(&psi)))) {
+                    pfd->SetFolder(psi);
+                    psi->Release();
+                }
+            }
+            if (SUCCEEDED(pfd->Show(hwnd))) {
+                IShellItem* psi = nullptr;
+                if (SUCCEEDED(pfd->GetResult(&psi))) {
+                    PWSTR psz = nullptr;
+                    psi->GetDisplayName(SIGDN_FILESYSPATH, &psz);
+                    if (psz) {
+                        wcsncpy_s(path, psz, MAX_PATH - 1);
+                        CoTaskMemFree(psz);
+                        SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, path);
+                    }
+                    psi->Release();
+                }
+            }
+            pfd->Release();
+        }
     }
 }
 
