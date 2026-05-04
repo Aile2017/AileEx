@@ -410,7 +410,9 @@ void MainWindow::OnDropFiles(HDROP hDrop) {
         params.extra      = App::Instance().GetSettings().GetAdvExtra();
 
         CompressDlg dlg;
-        if (dlg.Show(m_hwnd, params)) {
+        auto& sz7 = App::Instance().Get7z();
+        const auto* enc = sz7.IsLoaded() ? &sz7.GetEncoderNames() : nullptr;
+        if (dlg.Show(m_hwnd, params, enc)) {
             auto& s = App::Instance().GetSettings();
             s.SetCompressionLevel(params.level);
             s.SetRarLevel(params.rarLevel);
@@ -717,24 +719,28 @@ void MainWindow::OnAddFiles() {
     params.rarExtra       = App::Instance().GetSettings().GetRarAdvExtra();
 
     CompressDlg dlg;
-    if (dlg.Show(m_hwnd, params)) {
-        auto& s = App::Instance().GetSettings();
-        s.SetCompressionLevel(params.level);
-        s.SetRarLevel(params.rarLevel);
-        s.SetDefaultFormat(params.format.c_str());
-        s.SetAdvDictSize(params.dictSize.c_str());
-        s.SetAdvWordSize(params.wordSize.c_str());
-        s.SetAdvSolidBlock(params.solidBlock.c_str());
-        s.SetAdvThreads(params.threads.c_str());
-        s.SetAdvExtra(params.extra.c_str());
-        s.SetRarAdvDictSize(params.rarDictSize.c_str());
-        s.SetRarAdvSolid(params.rarSolid);
-        s.SetRarAdvThreads(params.rarThreads);
-        s.SetRarAdvRecovery(params.rarRecoveryPct);
-        s.SetRarAdvVolume(params.rarSplitVolume.c_str());
-        s.SetRarAdvExtra(params.rarExtra.c_str());
-        s.Save();
-        OnCompress(params);
+    {
+        auto& sz7 = App::Instance().Get7z();
+        const auto* enc = sz7.IsLoaded() ? &sz7.GetEncoderNames() : nullptr;
+        if (dlg.Show(m_hwnd, params, enc)) {
+            auto& s = App::Instance().GetSettings();
+            s.SetCompressionLevel(params.level);
+            s.SetRarLevel(params.rarLevel);
+            s.SetDefaultFormat(params.format.c_str());
+            s.SetAdvDictSize(params.dictSize.c_str());
+            s.SetAdvWordSize(params.wordSize.c_str());
+            s.SetAdvSolidBlock(params.solidBlock.c_str());
+            s.SetAdvThreads(params.threads.c_str());
+            s.SetAdvExtra(params.extra.c_str());
+            s.SetRarAdvDictSize(params.rarDictSize.c_str());
+            s.SetRarAdvSolid(params.rarSolid);
+            s.SetRarAdvThreads(params.rarThreads);
+            s.SetRarAdvRecovery(params.rarRecoveryPct);
+            s.SetRarAdvVolume(params.rarSplitVolume.c_str());
+            s.SetRarAdvExtra(params.rarExtra.c_str());
+            s.Save();
+            OnCompress(params);
+        }
     }
 }
 

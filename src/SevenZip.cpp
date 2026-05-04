@@ -166,11 +166,47 @@ bool SevenZip::Load(const wchar_t* dllPath) {
     GetModuleFileNameW(m_hDll, nameBuf, MAX_PATH);
     const wchar_t* leaf = wcsrchr(nameBuf, L'\\');
     m_loadedName = leaf ? (leaf + 1) : nameBuf;
+    // コーデック一覧を取得できる場合は列挙しておく
+    m_pfnGetNumMethods = (Func_GetNumberOfMethods)GetProcAddress(m_hDll, "GetNumberOfMethods");
+    m_pfnGetMethodProp = (Func_GetMethodProperty)GetProcAddress(m_hDll, "GetMethodProperty");
+    if (m_pfnGetNumMethods && m_pfnGetMethodProp) EnumerateCodecs();
     return true;
 }
 void SevenZip::Unload() {
     if (m_hDll) { FreeLibrary(m_hDll); m_hDll = nullptr; }
-    m_pfnCreateObject = nullptr;
+    m_pfnCreateObject  = nullptr;
+    m_pfnGetNumMethods = nullptr;
+    m_pfnGetMethodProp = nullptr;
+    m_encoderNames.clear();
+}
+
+// ============================================================
+// Codec enumeration
+// ============================================================
+
+// NMethodPropID: kName=1, kEncoderIsAssigned=8
+void SevenZip::EnumerateCodecs() {
+    m_encoderNames.clear();
+    UINT32 n = 0;
+    if (FAILED(m_pfnGetNumMethods(&n))) return;
+    for (UINT32 i = 0; i < n; i++) {
+        PROPVARIANT pvAssigned;
+        PropVariantInit(&pvAssigned);
+        HRESULT hr = m_pfnGetMethodProp(i, 8, &pvAssigned);  // kEncoderIsAssigned
+        bool hasEncoder = SUCCEEDED(hr) && pvAssigned.vt == VT_BOOL && pvAssigned.boolVal != VARIANT_FALSE;
+        PropVariantClear(&pvAssigned);
+        if (!hasEncoder) continue;
+
+        PROPVARIANT pvName;
+        PropVariantInit(&pvName);
+        hr = m_pfnGetMethodProp(i, 1, &pvName);  // kName
+        if (SUCCEEDED(hr) && pvName.vt == VT_BSTR && pvName.bstrVal) {
+            std::wstring name = pvName.bstrVal;
+            for (auto& c : name) c = (wchar_t)towlower((wchar_t)c);
+            m_encoderNames.push_back(std::move(name));
+        }
+        PropVariantClear(&pvName);
+    }
 }
 
 // ============================================================

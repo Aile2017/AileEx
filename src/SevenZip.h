@@ -6,6 +6,9 @@
 #include "WorkerThread.h"
 #include "7zip/Archive/IArchive.h"
 
+typedef HRESULT (WINAPI *Func_GetNumberOfMethods)(UINT32* numMethods);
+typedef HRESULT (WINAPI *Func_GetMethodProperty)(UINT32 index, PROPID propID, PROPVARIANT* value);
+
 // Advanced compression options passed to SevenZip::Compress().
 // Any empty string means "use default" (property is not sent to 7z.dll).
 struct CompressAdvanced {
@@ -47,10 +50,19 @@ public:
     // Auto-detect installed 7z.dll from registry or known paths.
     static std::wstring Find7zDll();
 
+    // Returns lowercased encoder names supported by the loaded DLL.
+    // Empty if DLL is not loaded or enumeration is unavailable.
+    const std::vector<std::wstring>& GetEncoderNames() const { return m_encoderNames; }
+
 private:
-    HMODULE           m_hDll           = nullptr;
-    std::wstring      m_loadedName;
-    Func_CreateObject m_pfnCreateObject = nullptr;
+    HMODULE                    m_hDll              = nullptr;
+    std::wstring               m_loadedName;
+    Func_CreateObject          m_pfnCreateObject   = nullptr;
+    Func_GetNumberOfMethods    m_pfnGetNumMethods  = nullptr;
+    Func_GetMethodProperty     m_pfnGetMethodProp  = nullptr;
+    std::vector<std::wstring>  m_encoderNames;  // lowercased; populated by EnumerateCodecs()
+
+    void EnumerateCodecs();
 
     HRESULT CreateInArchive(const GUID& clsid, IInArchive** ppArc);
     HRESULT CreateOutArchive(const GUID& clsid, IOutArchive** ppArc);

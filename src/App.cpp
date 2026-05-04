@@ -106,7 +106,8 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
     params.outputPath    = m_settings.GetDefaultOutputDir();
 
     CompressDlg dlg;
-    if (!dlg.Show(wnd.Hwnd(), params)) {
+    const auto* enc = m_sevenZip.IsLoaded() ? &m_sevenZip.GetEncoderNames() : nullptr;
+    if (!dlg.Show(wnd.Hwnd(), params, enc)) {
         return 0;
     }
     // Remember last-used settings

@@ -48,8 +48,10 @@ static const MethodEntry kMethodsRar[] = {
     {L"Best",           L"5"},
 };
 
-bool CompressDlg::Show(HWND hwndParent, Params& params) {
-    m_params = params;
+bool CompressDlg::Show(HWND hwndParent, Params& params,
+                       const std::vector<std::wstring>* encoderNames) {
+    m_params       = params;
+    m_encoderNames = encoderNames;
     INT_PTR result = DialogBoxParamW(
         GetModuleHandleW(nullptr),
         MAKEINTRESOURCEW(IDD_COMPRESS),
@@ -218,7 +220,26 @@ void CompressDlg::OnFormatChange(HWND hwnd) {
 
     const MethodEntry* methods = is7z ? kMethods7z : kMethodsZip;
     int count = is7z ? (int)_countof(kMethods7z) : (int)_countof(kMethodsZip);
+
+    // encoderNames が非空の場合、DLLがサポートするエンコーダーのみ表示する。
+    // 空または null のときはフィルタなし（全コーデックを表示）。
+    auto supportsEncoder = [&](const wchar_t* id) -> bool {
+        if (!m_encoderNames || m_encoderNames->empty()) return true;
+        std::wstring lower = id;
+        for (auto& c : lower) c = (wchar_t)towlower((wchar_t)c);
+        for (const auto& name : *m_encoderNames) {
+            if (name == lower) return true;
+            // ZIPの "store" はDLL内では "copy" として登録されている
+            if (lower == L"store" && name == L"copy") return true;
+            // 保険: "zstd" ↔ "zstandard"（DLLのバリアントによって表記が異なる可能性）
+            if ((lower == L"zstd" || lower == L"zstandard") &&
+                (name == L"zstd" || name == L"zstandard")) return true;
+        }
+        return false;
+    };
+
     for (int i = 0; i < count; ++i) {
+        if (!supportsEncoder(methods[i].id)) continue;
         int idx = (int)SendMessageW(hMethod, CB_ADDSTRING, 0, (LPARAM)methods[i].label);
         SendMessageW(hMethod, CB_SETITEMDATA, idx, (LPARAM)methods[i].id);
         if (m_params.method == methods[i].id) SendMessageW(hMethod, CB_SETCURSEL, idx, 0);

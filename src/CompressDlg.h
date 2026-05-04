@@ -30,7 +30,10 @@ public:
     };
 
     // Returns true if user clicked OK.
-    bool Show(HWND hwndParent, Params& params);
+    // encoderNames: lowercased encoder names from SevenZip::GetEncoderNames().
+    //               nullptr or empty = no filter (show all methods).
+    bool Show(HWND hwndParent, Params& params,
+              const std::vector<std::wstring>* encoderNames = nullptr);
 
 private:
     static INT_PTR CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
@@ -44,4 +47,5 @@ private:
 
     HWND   m_hwnd = nullptr;
     Params m_params;
+    const std::vector<std::wstring>* m_encoderNames = nullptr;  // not owned
 };
