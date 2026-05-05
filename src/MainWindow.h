@@ -86,6 +86,6 @@ private:
     static constexpr int kSplitterW = 5;
     static constexpr int kTreeMinW  = 80;
     static constexpr int kListMinW  = 80;
-    static constexpr int kToolbarH  = 28;
+    static constexpr int kToolbarH  = 42;
     static constexpr int kStatusH   = 22;
 };
