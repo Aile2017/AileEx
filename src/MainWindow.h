@@ -36,8 +36,14 @@ private:
     void OnOpenAssoc();
     void OnAddFiles();
     void OnInfo();
+    void OnDelete();
     void OnFileOpen();
     void OnAbout();
+    void OnToggleTree();
+    void OnToggleToolbar();
+    void OnInitMenuPopup(HMENU hMenu);
+    void OnMruOpen(int idx);
+    void RebuildMruMenu();
     void CloseArchive();  // 開いているアーカイブを閉じてビューを空にする (アプリ終了ではない)
     void OnCompress(CompressDlg::Params& params);
     void OnProgress(int pct, wchar_t* filename);  // takes ownership of filename
@@ -72,6 +78,9 @@ private:
     bool                     m_sortAsc = true;
     int                      m_treeWidth = 220;      // current splitter position
     bool                     m_draggingSplitter = false;
+    bool                     m_treeVisible = true;   // 表示メニューでトグル可能
+    bool                     m_toolbarVisible = true; // 表示メニューでトグル可能
+    HMENU                    m_hMruMenu = nullptr;   // 最近使ったアーカイブのサブメニュー
 
     static constexpr int kSplitterW = 5;
     static constexpr int kTreeMinW  = 80;

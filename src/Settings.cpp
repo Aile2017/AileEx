@@ -1,5 +1,6 @@
 #include "Settings.h"
 #include <shlwapi.h>
+#include <algorithm>
 
 void Settings::BuildIniPath() const {
     GetModuleFileNameW(nullptr, m_iniPath, MAX_PATH);
@@ -46,9 +47,21 @@ void Settings::Load() {
     GetPrivateProfileStringW(L"Window", L"H",         L"600",   buf, 16, m_iniPath); m_windowH        = _wtoi(buf);
     GetPrivateProfileStringW(L"Window", L"Maximized", L"0",     buf, 16, m_iniPath); m_windowMaximized = _wtoi(buf) != 0;
     GetPrivateProfileStringW(L"Window", L"Splitter",  L"220",   buf, 16, m_iniPath); m_splitterPos    = _wtoi(buf);
+    GetPrivateProfileStringW(L"Window", L"TreeVisible", L"1",   buf, 16, m_iniPath); m_treeVisible    = _wtoi(buf) != 0;
+    GetPrivateProfileStringW(L"Window", L"ToolbarVisible", L"1", buf, 16, m_iniPath); m_toolbarVisible = _wtoi(buf) != 0;
     if (m_windowW < 400) m_windowW = 400;
     if (m_windowH < 300) m_windowH = 300;
     if (m_splitterPos < 80) m_splitterPos = 80;
+
+    // MRU — Path0 が最新。空エントリに当たった時点で打ち切り。
+    m_mruPaths.clear();
+    for (size_t i = 0; i < kMaxMru; ++i) {
+        wchar_t key[16];
+        swprintf_s(key, L"Path%zu", i);
+        std::wstring v = ReadStr(L"Mru", key, L"");
+        if (v.empty()) break;
+        m_mruPaths.push_back(std::move(v));
+    }
 }
 
 void Settings::Save() const {
@@ -90,6 +103,34 @@ void Settings::Save() const {
     _itow_s(m_windowH,  buf, 10); WriteStr(L"Window", L"H",         buf);
     WriteStr(L"Window", L"Maximized", m_windowMaximized ? L"1" : L"0");
     _itow_s(m_splitterPos, buf, 10); WriteStr(L"Window", L"Splitter", buf);
+    WriteStr(L"Window", L"TreeVisible", m_treeVisible ? L"1" : L"0");
+    WriteStr(L"Window", L"ToolbarVisible", m_toolbarVisible ? L"1" : L"0");
+
+    // MRU — 不要キーは ini から削除するため WritePrivateProfileStringW に nullptr を渡す。
+    for (size_t i = 0; i < kMaxMru; ++i) {
+        wchar_t key[16];
+        swprintf_s(key, L"Path%zu", i);
+        const wchar_t* val = (i < m_mruPaths.size()) ? m_mruPaths[i].c_str() : nullptr;
+        WritePrivateProfileStringW(L"Mru", key, val, m_iniPath);
+    }
+}
+
+void Settings::AddMru(const std::wstring& path) {
+    auto eq = [&](const std::wstring& s) {
+        return _wcsicmp(s.c_str(), path.c_str()) == 0;
+    };
+    auto it = std::find_if(m_mruPaths.begin(), m_mruPaths.end(), eq);
+    if (it != m_mruPaths.end()) m_mruPaths.erase(it);
+    m_mruPaths.insert(m_mruPaths.begin(), path);
+    if (m_mruPaths.size() > kMaxMru) m_mruPaths.resize(kMaxMru);
+}
+
+void Settings::RemoveMru(const std::wstring& path) {
+    auto eq = [&](const std::wstring& s) {
+        return _wcsicmp(s.c_str(), path.c_str()) == 0;
+    };
+    auto it = std::find_if(m_mruPaths.begin(), m_mruPaths.end(), eq);
+    if (it != m_mruPaths.end()) m_mruPaths.erase(it);
 }
 
 std::wstring Settings::ReadStr(const wchar_t* section, const wchar_t* key, const wchar_t* def) const {

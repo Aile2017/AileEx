@@ -85,8 +85,13 @@
 #define IDM_FILE_OPEN       40010
 #define IDM_FILE_EXIT       40011
 #define IDM_FILE_MRU_PH     40012   // 最近使ったアーカイブ - "履歴なし" プレースホルダ
-#define IDM_VIEW_TREE       40013   // ツリー表示トグル (次フェーズで実装)
+#define IDM_VIEW_TREE       40013   // ツリー表示トグル
 #define IDM_HELP_ABOUT      40014
+#define IDM_VIEW_TOOLBAR    40015   // ツールバー表示トグル
+
+// 最近使ったアーカイブ - 動的 ID レンジ (10 件)
+#define IDM_FILE_MRU_BASE   41000
+#define IDM_FILE_MRU_LAST   41009
 
 // Menu resource
 #define IDR_MAIN_MENU       301

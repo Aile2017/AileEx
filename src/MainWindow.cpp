@@ -55,7 +55,9 @@ bool MainWindow::RegisterClass(HINSTANCE hInst) {
 
 bool MainWindow::Create(HINSTANCE hInst, int nCmdShow) {
     auto& s = App::Instance().GetSettings();
-    m_treeWidth = s.GetSplitterPos();
+    m_treeWidth   = s.GetSplitterPos();
+    m_treeVisible = s.GetTreeVisible();
+    m_toolbarVisible = s.GetToolbarVisible();
 
     int wx = s.GetWindowX(), wy = s.GetWindowY();
     int ww = s.GetWindowW(), wh = s.GetWindowH();
@@ -138,6 +140,17 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         return;
     }
 
+    // MRU 更新 — 相対パスや混在ケース ("../" 等) は GetFullPathNameW で正規化。
+    {
+        wchar_t full[MAX_PATH] = {};
+        if (GetFullPathNameW(path, MAX_PATH, full, nullptr) == 0)
+            wcsncpy_s(full, path, MAX_PATH - 1);
+        auto& s = app.GetSettings();
+        s.AddMru(full);
+        s.Save();
+        RebuildMruMenu();
+    }
+
     // Update title
     const wchar_t* leaf = wcsrchr(path, L'\\');
     std::wstring title = std::wstring(L"AileEx - ") + (leaf ? leaf + 1 : path);
@@ -203,6 +216,12 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
         OnCommand(LOWORD(wp));
         return 0;
 
+    case WM_INITMENUPOPUP:
+        // HIWORD(lp) != 0 はシステムメニュー (タイトルバー右クリック等) のため対象外
+        if (HIWORD(lp) == 0)
+            OnInitMenuPopup((HMENU)wp);
+        break;
+
     case WM_NOTIFY: {
         auto* hdr = reinterpret_cast<NMHDR*>(lp);
         if (hdr->hwndFrom == m_hTreeView && hdr->code == TVN_SELCHANGED)
@@ -217,7 +236,7 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
     }
 
     case WM_SETCURSOR: {
-        if ((HWND)wp == m_hwnd) {
+        if (m_treeVisible && (HWND)wp == m_hwnd) {
             POINT pt;
             GetCursorPos(&pt);
             ScreenToClient(m_hwnd, &pt);
@@ -231,7 +250,7 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
 
     case WM_LBUTTONDOWN: {
         int x = (int)(short)LOWORD(lp);
-        if (x >= m_treeWidth && x < m_treeWidth + kSplitterW) {
+        if (m_treeVisible && x >= m_treeWidth && x < m_treeWidth + kSplitterW) {
             m_draggingSplitter = true;
             SetCapture(m_hwnd);
             SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
@@ -255,7 +274,7 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
             SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
             return 0;
         }
-        if (x >= m_treeWidth && x < m_treeWidth + kSplitterW) {
+        if (m_treeVisible && x >= m_treeWidth && x < m_treeWidth + kSplitterW) {
             SetCursor(LoadCursorW(nullptr, IDC_SIZEWE));
             return 0;
         }
@@ -299,6 +318,8 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
                                  (int)(r.right - r.left), (int)(r.bottom - r.top),
                                  maximized);
             s.SetSplitterPos(m_treeWidth);
+            s.SetTreeVisible(m_treeVisible);
+            s.SetToolbarVisible(m_toolbarVisible);
             s.Save();
         }
         // Delete session temp dir tree (files opened via [閲覧])
@@ -323,6 +344,29 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
 void MainWindow::OnCreate(HWND hwnd) {
     CreateControls(hwnd);
     DragAcceptFiles(hwnd, TRUE);
+
+    // 最近使ったアーカイブのサブメニューハンドルを探してキャッシュ。
+    // 一度キャッシュすれば中身を再構築しても HMENU 自体は有効。
+    if (HMENU hMenuBar = GetMenu(hwnd)) {
+        int topCount = GetMenuItemCount(hMenuBar);
+        for (int i = 0; i < topCount && !m_hMruMenu; ++i) {
+            HMENU hPopup = GetSubMenu(hMenuBar, i);
+            if (!hPopup) continue;
+            int n = GetMenuItemCount(hPopup);
+            for (int j = 0; j < n && !m_hMruMenu; ++j) {
+                HMENU hSub = GetSubMenu(hPopup, j);
+                if (!hSub) continue;
+                int subCount = GetMenuItemCount(hSub);
+                for (int k = 0; k < subCount; ++k) {
+                    if (GetMenuItemID(hSub, k) == IDM_FILE_MRU_PH) {
+                        m_hMruMenu = hSub;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    RebuildMruMenu();
 }
 
 void MainWindow::CreateControls(HWND hwnd) {
@@ -346,15 +390,21 @@ void MainWindow::CreateControls(HWND hwnd) {
     SendMessageW(m_hToolbar, TB_ADDBUTTONS, _countof(btns), (LPARAM)btns);
     SendMessageW(m_hToolbar, TB_AUTOSIZE, 0, 0);
 
+    // 設定で非表示なら起動直後に隠す
+    if (!m_toolbarVisible)
+        ShowWindow(m_hToolbar, SW_HIDE);
+
     // Status bar
     m_hStatus = CreateWindowExW(0, STATUSCLASSNAME, L"",
         WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
         0, 0, 0, 0, hwnd, nullptr, hInst, nullptr);
 
-    // TreeView (left pane)
+    // TreeView (left pane). 設定で非表示なら WS_VISIBLE を付与しない。
+    DWORD treeStyle = WS_CHILD | WS_TABSTOP | TVS_HASLINES | TVS_LINESATROOT |
+                      TVS_HASBUTTONS | TVS_SHOWSELALWAYS;
+    if (m_treeVisible) treeStyle |= WS_VISIBLE;
     m_hTreeView = CreateWindowExW(WS_EX_CLIENTEDGE, WC_TREEVIEW, nullptr,
-        WS_CHILD | WS_VISIBLE | WS_TABSTOP | TVS_HASLINES | TVS_LINESATROOT |
-        TVS_HASBUTTONS | TVS_SHOWSELALWAYS,
+        treeStyle,
         0, 0, 0, 0, hwnd, nullptr, hInst, nullptr);
 
     // ListView (right pane)
@@ -400,11 +450,14 @@ void MainWindow::ResizePanes(int cx, int cy) {
     if (!m_hToolbar) return;
 
     // Toolbar
-    SendMessageW(m_hToolbar, TB_AUTOSIZE, 0, 0);
-    RECT rcTB = {};
-    GetWindowRect(m_hToolbar, &rcTB);
-    int tbH = rcTB.bottom - rcTB.top;
-    SetWindowPos(m_hToolbar, nullptr, 0, 0, cx, tbH, SWP_NOZORDER);
+    int tbH = 0;
+    if (m_toolbarVisible) {
+        SendMessageW(m_hToolbar, TB_AUTOSIZE, 0, 0);
+        RECT rcTB = {};
+        GetWindowRect(m_hToolbar, &rcTB);
+        tbH = rcTB.bottom - rcTB.top;
+        SetWindowPos(m_hToolbar, nullptr, 0, 0, cx, tbH, SWP_NOZORDER);
+    }
 
     // Status bar
     SetWindowPos(m_hStatus, nullptr, 0, cy - kStatusH, cx, kStatusH, SWP_NOZORDER);
@@ -413,12 +466,17 @@ void MainWindow::ResizePanes(int cx, int cy) {
     int contentH   = cy - tbH - kStatusH;
     if (contentH < 0) contentH = 0;
 
-    // TreeView (left)
-    SetWindowPos(m_hTreeView, nullptr, 0, contentTop, m_treeWidth, contentH, SWP_NOZORDER);
+    if (m_treeVisible) {
+        // TreeView (left)
+        SetWindowPos(m_hTreeView, nullptr, 0, contentTop, m_treeWidth, contentH, SWP_NOZORDER);
 
-    // ListView (right)
-    int lvX = m_treeWidth + kSplitterW;
-    SetWindowPos(m_hListView, nullptr, lvX, contentTop, cx - lvX, contentH, SWP_NOZORDER);
+        // ListView (right)
+        int lvX = m_treeWidth + kSplitterW;
+        SetWindowPos(m_hListView, nullptr, lvX, contentTop, cx - lvX, contentH, SWP_NOZORDER);
+    } else {
+        // ツリー非表示時は ListView をフル幅化。ツリー本体は SW_HIDE 済み想定。
+        SetWindowPos(m_hListView, nullptr, 0, contentTop, cx, contentH, SWP_NOZORDER);
+    }
 }
 
 // ---- Drag-and-drop ----
@@ -481,6 +539,9 @@ void MainWindow::OnCommand(WORD id) {
     case ID_INFO:
         OnInfo();
         break;
+    case ID_DELETE:
+        OnDelete();
+        break;
     case ID_SETTINGS_DLG: {
         SettingsDlg dlg;
         dlg.Show(m_hwnd);
@@ -495,8 +556,18 @@ void MainWindow::OnCommand(WORD id) {
     case IDM_FILE_EXIT:
         DestroyWindow(m_hwnd);
         break;
+    case IDM_VIEW_TREE:
+        OnToggleTree();
+        break;
+    case IDM_VIEW_TOOLBAR:
+        OnToggleToolbar();
+        break;
     case IDM_HELP_ABOUT:
         OnAbout();
+        break;
+    default:
+        if (id >= IDM_FILE_MRU_BASE && id <= IDM_FILE_MRU_LAST)
+            OnMruOpen(id - IDM_FILE_MRU_BASE);
         break;
     }
 }
@@ -925,6 +996,96 @@ void MainWindow::OnAbout() {
                     m_hwnd, AboutDlgProc, 0);
 }
 
+void MainWindow::OnMruOpen(int idx) {
+    auto& settings = App::Instance().GetSettings();
+    const auto& mru = settings.GetMruPaths();
+    if (idx < 0 || idx >= (int)mru.size()) return;
+
+    std::wstring path = mru[idx];   // OpenArchive 内で AddMru されると並び替わるためコピー
+    if (!PathFileExistsW(path.c_str())) {
+        std::wstring msg = L"ファイルが見つかりません:\n" + path + L"\n\n履歴から削除します。";
+        MessageBoxW(m_hwnd, msg.c_str(), L"AileEx", MB_ICONWARNING);
+        settings.RemoveMru(path);
+        settings.Save();
+        RebuildMruMenu();
+        return;
+    }
+    OpenArchive(path.c_str());
+}
+
+void MainWindow::RebuildMruMenu() {
+    if (!m_hMruMenu) return;
+
+    // 既存項目を全削除
+    while (DeleteMenu(m_hMruMenu, 0, MF_BYPOSITION)) {}
+
+    const auto& mru = App::Instance().GetSettings().GetMruPaths();
+    if (mru.empty()) {
+        AppendMenuW(m_hMruMenu, MF_STRING | MF_GRAYED, IDM_FILE_MRU_PH, L"(履歴なし)");
+    } else {
+        for (size_t i = 0; i < mru.size(); ++i) {
+            // 先頭 9 件は &1..&9 でアクセラレータ表示。10 件目以降はインデント揃え。
+            wchar_t prefix[8];
+            if (i < 9)
+                swprintf_s(prefix, L"&%zu  ", i + 1);
+            else
+                swprintf_s(prefix, L"     ");
+            // & はメニュー上で下線扱いなので二重化してエスケープ
+            std::wstring label = prefix;
+            for (wchar_t c : mru[i]) {
+                if (c == L'&') label += L"&&";
+                else label += c;
+            }
+            AppendMenuW(m_hMruMenu, MF_STRING,
+                        IDM_FILE_MRU_BASE + (UINT)i, label.c_str());
+        }
+    }
+    DrawMenuBar(m_hwnd);
+}
+
+void MainWindow::OnToggleTree() {
+    m_treeVisible = !m_treeVisible;
+    if (m_hTreeView)
+        ShowWindow(m_hTreeView, m_treeVisible ? SW_SHOW : SW_HIDE);
+    RECT rc = {};
+    GetClientRect(m_hwnd, &rc);
+    ResizePanes(rc.right, rc.bottom);
+}
+
+void MainWindow::OnToggleToolbar() {
+    m_toolbarVisible = !m_toolbarVisible;
+    if (m_hToolbar)
+        ShowWindow(m_hToolbar, m_toolbarVisible ? SW_SHOW : SW_HIDE);
+    RECT rc = {};
+    GetClientRect(m_hwnd, &rc);
+    ResizePanes(rc.right, rc.bottom);
+}
+
+// メニュー表示直前に有効/無効状態を更新する。WM_INITMENUPOPUP は popup 単位で
+// 発火するため、対象 ID がこの popup に含まれない場合 EnableMenuItem は -1 を返
+// すだけで副作用なし。全コマンドを毎回呼んで問題ない。
+void MainWindow::OnInitMenuPopup(HMENU hMenu) {
+    bool hasArchive = !m_archivePath.empty();
+    bool readOnly   = m_openedWithUnrar;
+    int  selCount   = m_hListView ? ListView_GetSelectedCount(m_hListView) : 0;
+
+    auto setEnabled = [hMenu](UINT id, bool enabled) {
+        EnableMenuItem(hMenu, id, MF_BYCOMMAND | (enabled ? MF_ENABLED : MF_GRAYED));
+    };
+
+    setEnabled(ID_CLOSE,      hasArchive);
+    setEnabled(ID_EXTRACT,    hasArchive);
+    setEnabled(ID_TEST,       hasArchive);
+    setEnabled(ID_OPEN_ASSOC, hasArchive && !readOnly);
+    setEnabled(ID_INFO,       selCount > 0);
+    setEnabled(ID_DELETE,     hasArchive && !readOnly && selCount > 0);
+
+    CheckMenuItem(hMenu, IDM_VIEW_TREE,
+                  MF_BYCOMMAND | (m_treeVisible ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(hMenu, IDM_VIEW_TOOLBAR,
+                  MF_BYCOMMAND | (m_toolbarVisible ? MF_CHECKED : MF_UNCHECKED));
+}
+
 void MainWindow::CloseArchive() {
     if (m_archivePath.empty()) return;
     m_archivePath.clear();
@@ -1012,6 +1173,121 @@ void MainWindow::OnInfo() {
 
     InfoDlg dlg;
     dlg.Show(m_hwnd, m_items[arcIdx]);
+}
+
+void MainWindow::OnDelete() {
+    if (m_archivePath.empty() || m_openedWithUnrar) return;
+
+    // ListView 選択を実エントリ集合に解決する。
+    //  - 実エントリ (lParam < m_items.size())：そのインデックスを採用
+    //    フォルダなら配下の全エントリも追加（"path/" プレフィクスマッチ）
+    //  - 仮想フォルダ (lParam >= m_items.size())：m_folderPaths から配下を解決
+    std::set<UINT32> indexSet;
+    std::set<std::wstring> folderPaths;  // RAR 経路で使う表示パス
+    int item = -1;
+    while ((item = ListView_GetNextItem(m_hListView, item, LVNI_SELECTED)) != -1) {
+        LVITEMW lvi = {};
+        lvi.iItem = item;
+        lvi.mask  = LVIF_PARAM;
+        ListView_GetItem(m_hListView, &lvi);
+        UINT32 lp = (UINT32)lvi.lParam;
+
+        std::wstring folder;
+        if (lp < (UINT32)m_items.size()) {
+            indexSet.insert(lp);
+            const auto& it = m_items[lp];
+            if (it.isDir) folder = it.path;
+            else          folderPaths.insert(it.path);
+        } else {
+            int fpIdx = (int)(lp - (UINT32)m_items.size());
+            if (fpIdx >= 0 && fpIdx < (int)m_folderPaths.size())
+                folder = m_folderPaths[fpIdx];
+        }
+
+        if (!folder.empty()) {
+            folderPaths.insert(folder);
+            std::wstring prefix = folder + L"/";
+            for (UINT32 j = 0; j < (UINT32)m_items.size(); ++j) {
+                if (m_items[j].path.size() > prefix.size() &&
+                    m_items[j].path.compare(0, prefix.size(), prefix) == 0) {
+                    indexSet.insert(j);
+                }
+            }
+        }
+    }
+    if (indexSet.empty() && folderPaths.empty()) return;
+
+    // 確認 — 元の ListView 選択数を提示（フォルダ展開後の数より直感的）
+    int origCount = ListView_GetSelectedCount(m_hListView);
+    wchar_t msg[256];
+    swprintf_s(msg,
+               L"選択した %d 個の項目をアーカイブから削除します。\n"
+               L"（フォルダは配下も含めて削除されます）\n\nよろしいですか？",
+               origCount);
+    if (MessageBoxW(m_hwnd, msg, L"削除確認", MB_YESNO | MB_ICONWARNING) != IDYES)
+        return;
+
+    App& app = App::Instance();
+    const wchar_t* dot = wcsrchr(m_archivePath.c_str(), L'.');
+    bool isRar = (dot && _wcsicmp(dot + 1, L"rar") == 0);
+
+    ProgressDlg progDlg;
+    progDlg.Show(m_hwnd, L"削除中...");
+
+    auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
+    m_pSink = sink;
+    progDlg.SetSink(sink);
+
+    HRESULT hrDone = S_OK;
+    auto archivePath = m_archivePath;
+
+    if (isRar) {
+        // RAR: rar.exe d -y -r でフォルダ含めて削除
+        std::vector<std::wstring> rarPaths;
+        rarPaths.reserve(folderPaths.size());
+        for (const auto& p : folderPaths) {
+            std::wstring bs = p;
+            for (auto& c : bs) if (c == L'/') c = L'\\';
+            rarPaths.push_back(std::move(bs));
+        }
+        RarProcess proc;
+        bool ok = proc.Delete(archivePath.c_str(), rarPaths,
+                              app.GetSettings().GetRarExePath().c_str(),
+                              m_hwnd, WM_APP_DONE);
+        if (!ok) {
+            progDlg.Dismiss();
+            delete sink; m_pSink = nullptr;
+            return;
+        }
+        hrDone = progDlg.RunMessageLoop();
+        // proc のデストラクタが reader/process ハンドルを待機・解放
+    } else {
+        if (!app.Get7z().IsLoaded()) {
+            progDlg.Dismiss();
+            delete sink; m_pSink = nullptr;
+            ShowError(L"7z.dll が読み込まれていません。");
+            return;
+        }
+        std::vector<UINT32> deleteIndices(indexSet.begin(), indexSet.end());
+        auto& sz = app.Get7z();
+        m_worker.Start([&sz, archivePath, deleteIndices, sink]() -> HRESULT {
+            return sz.DeleteItems(archivePath.c_str(), deleteIndices, nullptr, sink);
+        }, m_hwnd, WM_APP_DONE);
+        hrDone = progDlg.RunMessageLoop();
+        m_worker.Wait();
+    }
+
+    delete sink;
+    m_pSink = nullptr;
+
+    if (FAILED(hrDone) && hrDone != E_ABORT) {
+        ShowError(L"削除に失敗しました。", hrDone);
+        return;
+    }
+    if (hrDone == E_ABORT) return;
+
+    // 成功 → アーカイブを再読込
+    OpenArchive(archivePath.c_str());
 }
 
 void MainWindow::OnCompress(CompressDlg::Params& params) {

@@ -33,14 +33,15 @@ BEGIN
         MENUITEM "テスト(&T)\tCtrl+T",                  ID_TEST
         MENUITEM SEPARATOR
         MENUITEM "関連付けで開く(&O)\tEnter",           ID_OPEN_ASSOC
-        MENUITEM "削除(&D)\tDel",                      ID_DELETE, GRAYED
+        MENUITEM "削除(&D)\tDel",                      ID_DELETE
         MENUITEM "情報(&I)",                            ID_INFO
         MENUITEM SEPARATOR
         MENUITEM "設定(&S)...",                         ID_SETTINGS_DLG
     END
     POPUP "表示(&V)"
     BEGIN
-        MENUITEM "ツリー表示(&T)",                      IDM_VIEW_TREE, GRAYED
+        MENUITEM "ツールバー(&B)",                      IDM_VIEW_TOOLBAR
+        MENUITEM "ツリー表示(&T)",                      IDM_VIEW_TREE
     END
     POPUP "ヘルプ(&H)"
     BEGIN

@@ -1,9 +1,12 @@
 #pragma once
 #include <windows.h>
 #include <string>
+#include <vector>
 
 class Settings {
 public:
+    static constexpr size_t kMaxMru = 10;
+
     void Load();
     void Save() const;
 
@@ -58,17 +61,26 @@ public:
     int  GetWindowH() const          { return m_windowH; }
     bool GetWindowMaximized() const  { return m_windowMaximized; }
     int  GetSplitterPos() const      { return m_splitterPos; }
+    bool GetTreeVisible() const      { return m_treeVisible; }
+    bool GetToolbarVisible() const   { return m_toolbarVisible; }
     void SetWindowPlacement(int x, int y, int w, int h, bool maximized) {
         m_windowX = x; m_windowY = y; m_windowW = w; m_windowH = h;
         m_windowMaximized = maximized;
     }
     void SetSplitterPos(int v)       { m_splitterPos = v; }
+    void SetTreeVisible(bool v)      { m_treeVisible = v; }
+    void SetToolbarVisible(bool v)   { m_toolbarVisible = v; }
 
     const std::wstring& Get7zDllPath() const        { return m_7zDllPath; }
     void Set7zDllPath(const wchar_t* v)             { m_7zDllPath = v; }
 
     const std::wstring& GetUnrarDllPath() const     { return m_unrarDllPath; }
     void SetUnrarDllPath(const wchar_t* v)          { m_unrarDllPath = v; }
+
+    // MRU (最近使ったアーカイブ) — 先頭が最新。重複は大文字小文字無視で除去。
+    const std::vector<std::wstring>& GetMruPaths() const { return m_mruPaths; }
+    void AddMru(const std::wstring& path);
+    void RemoveMru(const std::wstring& path);
 
 private:
     mutable wchar_t m_iniPath[MAX_PATH] = {};
@@ -97,8 +109,11 @@ private:
     int          m_windowH          = 600;
     bool         m_windowMaximized  = false;
     int          m_splitterPos      = 220;
+    bool         m_treeVisible      = true;
+    bool         m_toolbarVisible   = true;
     std::wstring m_7zDllPath;
     std::wstring m_unrarDllPath;
+    std::vector<std::wstring> m_mruPaths;
 
     std::wstring ReadStr(const wchar_t* section, const wchar_t* key, const wchar_t* def) const;
     void         WriteStr(const wchar_t* section, const wchar_t* key, const wchar_t* val) const;
