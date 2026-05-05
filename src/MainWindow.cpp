@@ -377,15 +377,34 @@ void MainWindow::CreateControls(HWND hwnd) {
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBSTYLE_FLAT | CCS_NODIVIDER | CCS_NORESIZE,
         0, 0, 0, kToolbarH, hwnd, nullptr, hInst, nullptr);
     SendMessageW(m_hToolbar, TB_BUTTONSTRUCTSIZE, sizeof(TBBUTTON), 0);
-    SendMessageW(m_hToolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(0, 0));
+    SendMessageW(m_hToolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(48, 36));
+
+    // Load toolbar bitmaps
+    TBADDBITMAP ab = {};
+    ab.hInst = hInst;
+    
+    ab.nID = IDB_TOOLBAR_EXTRACT;
+    int idxExtract = (int)SendMessageW(m_hToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+    
+    ab.nID = IDB_TOOLBAR_OPEN;
+    int idxOpen = (int)SendMessageW(m_hToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+    
+    ab.nID = IDB_TOOLBAR_ADD;
+    int idxAdd = (int)SendMessageW(m_hToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+    
+    ab.nID = IDB_TOOLBAR_INFO;
+    int idxInfo = (int)SendMessageW(m_hToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
+    
+    ab.nID = IDB_TOOLBAR_SETTINGS;
+    int idxSettings = (int)SendMessageW(m_hToolbar, TB_ADDBITMAP, 1, (LPARAM)&ab);
 
     TBBUTTON btns[] = {
-        {I_IMAGENONE, ID_EXTRACT,     TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"展開"},
-        {I_IMAGENONE, ID_OPEN_ASSOC,  TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"閲覧"},
-        {I_IMAGENONE, ID_ADD,         TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"追加"},
-        {I_IMAGENONE, ID_INFO,        TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"情報"},
-        {I_IMAGENONE, 0,              0,                BTNS_SEP,                   {}, 0, 0},
-        {I_IMAGENONE, ID_SETTINGS_DLG,TBSTATE_ENABLED, BTNS_BUTTON | BTNS_SHOWTEXT, {}, 0, (INT_PTR)L"設定"},
+        {idxExtract, ID_EXTRACT,      TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
+        {idxOpen,    ID_OPEN_ASSOC,   TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
+        {idxAdd,     ID_ADD,          TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
+        {idxInfo,    ID_INFO,         TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
+        {0,          0,               0,               BTNS_SEP,    {}, 0, 0},
+        {idxSettings, ID_SETTINGS_DLG, TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
     };
     SendMessageW(m_hToolbar, TB_ADDBUTTONS, _countof(btns), (LPARAM)btns);
     SendMessageW(m_hToolbar, TB_AUTOSIZE, 0, 0);

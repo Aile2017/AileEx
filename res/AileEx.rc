@@ -7,6 +7,13 @@
 // Application icon
 IDI_AILEEX ICON "AileEx.ico"
 
+// Toolbar bitmaps
+IDB_TOOLBAR_EXTRACT BITMAP "Extract.bmp"
+IDB_TOOLBAR_OPEN BITMAP "Open.bmp"
+IDB_TOOLBAR_ADD BITMAP "Add.bmp"
+IDB_TOOLBAR_INFO BITMAP "Info.bmp"
+IDB_TOOLBAR_SETTINGS BITMAP "Settings.bmp"
+
 // Embed DPI-aware / visual-styles manifest
 1 RT_MANIFEST "manifest.xml"
 
