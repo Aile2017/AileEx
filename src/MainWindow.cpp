@@ -170,6 +170,8 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
             OnTreeSelChanged();
         if (hdr->hwndFrom == m_hListView && hdr->code == NM_DBLCLK)
             OnListDblClick();
+        if (hdr->hwndFrom == m_hListView && hdr->code == NM_RETURN)
+            OnListDblClick();
         if (hdr->hwndFrom == m_hListView && hdr->code == LVN_COLUMNCLICK) {
             auto* nm = reinterpret_cast<NMLISTVIEW*>(lp);
             OnColumnClick(nm->iSubItem);
@@ -521,6 +523,9 @@ void MainWindow::OnListDblClick() {
         int fpIdx = (int)(arcIdx - (UINT32)m_items.size());
         if (fpIdx < (int)m_folderPaths.size())
             navigateToFolderIndex(fpIdx);
+    } else {
+        // ファイル → 展開ダイアログを開く
+        OnExtract();
     }
 }
 

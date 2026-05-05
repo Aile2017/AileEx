@@ -66,7 +66,7 @@ int App::RunBrowseMode(const std::vector<std::wstring>& archivePaths, int nCmdSh
         { FVIRTKEY,              VK_F5,     ID_EXTRACT },
         { FVIRTKEY | FCONTROL, (WORD)'E',  ID_EXTRACT },
         { FVIRTKEY | FCONTROL, (WORD)'A',  ID_ADD },
-        { FVIRTKEY,              VK_RETURN, ID_EXTRACT },
+        // VK_RETURN は ListView/TreeView 内でコンテキストに応じて処理するためここでは定義しない
         { FVIRTKEY,              VK_ESCAPE, ID_CLOSE   },
     };
     HACCEL hAccel = CreateAcceleratorTable(accelTable, _countof(accelTable));
