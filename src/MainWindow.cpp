@@ -449,6 +449,12 @@ void MainWindow::OnDropFiles(HDROP hDrop) {
 
 void MainWindow::OnCommand(WORD id) {
     switch (id) {
+    case IDOK:
+        // IsDialogMessage が Enter を WM_COMMAND(IDOK) に変換して届ける。
+        // フォーカスに応じてコンテキスト処理する。
+        if (GetFocus() == m_hListView)
+            OnListDblClick();
+        break;
     case ID_EXTRACT:
         OnExtract();
         break;
