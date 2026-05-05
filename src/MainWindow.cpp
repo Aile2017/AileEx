@@ -238,10 +238,12 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
         break;
 
     case WM_APP_PROGRESS:
+        // fallback: 内側ループが WM_APP_PROGRESS/DONE を吸収するため通常は到達しない
         OnProgress((int)wp, (wchar_t*)lp);
         return 0;
 
     case WM_APP_DONE:
+        // fallback: 内側ループが WM_APP_PROGRESS/DONE を吸収するため通常は到達しない
         OnDone((HRESULT)wp);
         return 0;
 

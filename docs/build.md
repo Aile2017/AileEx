@@ -28,6 +28,7 @@ cmake --build build
 ### Release
 
 ```powershell
+$env:PATH = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64;" + $env:PATH
 cmake -B build_release -DCMAKE_BUILD_TYPE=Release
 cmake --build build_release
 ```

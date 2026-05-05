@@ -47,7 +47,7 @@ static const MethodEntry kMethodsRar[] = {
     {L"Store",          L"0"},
     {L"Fastest",        L"1"},
     {L"Fast",           L"2"},
-    {L"Normal",           L"3"},
+    {L"Normal",         L"3"},
     {L"Good",           L"4"},
     {L"Best",           L"5"},
 };

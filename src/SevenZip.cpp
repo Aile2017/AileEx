@@ -778,6 +778,11 @@ public:
     HRESULT STDMETHODCALLTYPE GetStream(UInt32 index, ISequentialOutStream** outStream,
                                         Int32 askExtractMode) override {
         *outStream = nullptr;
+        // 前回の呼び出しで残ったストリームをリセット（スキップ・ディレクトリで SetOperationResult が
+        // 呼ばれなかった場合でも m_currentOut が残らないよう防御）
+        if (m_currentOut) { m_currentOut->Release(); m_currentOut = nullptr; }
+        m_currentIsDir     = false;
+        m_currentItemIndex = -1;
         if (askExtractMode != NArchive::NExtract::NAskMode::kExtract) return S_OK;
 
         // Get path of this item

@@ -123,12 +123,27 @@ bool RarProcess::Compress(const std::vector<std::wstring>& srcPaths,
     std::wstring cmd = L"\"" + rarExe + L"\" a -ep1 -r -m" + mBuf;
 
     // パスワード: -hp (ヘッダ含む暗号化) または -p (データのみ)
+    // パスワードはコマンドライン直結なので Windows 標準エスケープで引用符包み。
+    // "-hp\"My Pass\"" → CommandLineToArgvW が "-hpMy Pass" 1 トークンとして解釈。
     if (password && password[0]) {
         std::wstring pw(password);
+        // Windows コマンドライン用エスケープ: バックスラッシュは " 直前でのみ 2 倍化
+        auto quotePw = [](const std::wstring& s) -> std::wstring {
+            std::wstring r = L"\"";
+            int bs = 0;
+            for (wchar_t c : s) {
+                if (c == L'\\') { ++bs; }
+                else if (c == L'"') { r.append(bs * 2 + 1, L'\\'); r += L'"'; bs = 0; }
+                else { r.append(bs, L'\\'); r += c; bs = 0; }
+            }
+            r.append(bs * 2, L'\\');
+            r += L'"';
+            return r;
+        };
         if (encryptHeaders)
-            cmd += L" -hp" + pw;
+            cmd += L" -hp" + quotePw(pw);
         else
-            cmd += L" -p" + pw;
+            cmd += L" -p" + quotePw(pw);
     }
 
     if (adv) {
@@ -182,16 +197,33 @@ bool RarProcess::Compress(const std::vector<std::wstring>& srcPaths,
         if (!CreatePipe(&hRead, &hWrite, &sa, 0)) return false;
         SetHandleInformation(hRead, HANDLE_FLAG_INHERIT, 0);
 
-        STARTUPINFOW si = {};
-        si.cb          = sizeof(si);
-        si.dwFlags     = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
-        si.wShowWindow = SW_HIDE;
-        si.hStdOutput  = hWrite;
-        si.hStdError   = hWrite;
+        // PROC_THREAD_ATTRIBUTE_HANDLE_LIST で継承ハンドルを hWrite だけに絞る
+        SIZE_T attrListSize = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
+        LPPROC_THREAD_ATTRIBUTE_LIST pAttrList =
+            reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
+                HeapAlloc(GetProcessHeap(), 0, attrListSize));
+        if (!pAttrList) { CloseHandle(hRead); CloseHandle(hWrite); return false; }
+        InitializeProcThreadAttributeList(pAttrList, 1, 0, &attrListSize);
+        HANDLE inheritHandles[1] = { hWrite };
+        UpdateProcThreadAttribute(pAttrList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                  inheritHandles, sizeof(inheritHandles), nullptr, nullptr);
+
+        STARTUPINFOEXW siex  = {};
+        siex.StartupInfo.cb         = sizeof(siex);
+        siex.StartupInfo.dwFlags    = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+        siex.StartupInfo.wShowWindow = SW_HIDE;
+        siex.StartupInfo.hStdOutput  = hWrite;
+        siex.StartupInfo.hStdError   = hWrite;
+        siex.lpAttributeList         = pAttrList;
 
         BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr,
-                                 TRUE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi);
+                                 TRUE, CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT,
+                                 nullptr, nullptr,
+                                 reinterpret_cast<LPSTARTUPINFOW>(&siex), &pi);
         CloseHandle(hWrite);
+        DeleteProcThreadAttributeList(pAttrList);
+        HeapFree(GetProcessHeap(), 0, pAttrList);
         if (!ok) { CloseHandle(hRead); return false; }
         m_hProcess = pi.hProcess;
         CloseHandle(pi.hThread);

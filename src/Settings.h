@@ -71,7 +71,7 @@ public:
     void SetUnrarDllPath(const wchar_t* v)          { m_unrarDllPath = v; }
 
 private:
-    wchar_t m_iniPath[MAX_PATH] = {};
+    mutable wchar_t m_iniPath[MAX_PATH] = {};
 
     std::wstring m_rarExtractor    = L"7z";
     std::wstring m_rarExePath;
@@ -102,5 +102,5 @@ private:
 
     std::wstring ReadStr(const wchar_t* section, const wchar_t* key, const wchar_t* def) const;
     void         WriteStr(const wchar_t* section, const wchar_t* key, const wchar_t* val) const;
-    void         BuildIniPath();
+    void         BuildIniPath() const;
 };

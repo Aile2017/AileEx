@@ -1,7 +1,7 @@
 #include "Settings.h"
 #include <shlwapi.h>
 
-void Settings::BuildIniPath() {
+void Settings::BuildIniPath() const {
     GetModuleFileNameW(nullptr, m_iniPath, MAX_PATH);
     PathRenameExtensionW(m_iniPath, L".ini");
 }
@@ -52,6 +52,8 @@ void Settings::Load() {
 }
 
 void Settings::Save() const {
+    // Load() 未呼び出しで Save() が呼ばれた場合に空パスへの書き込みを防ぐ
+    if (!m_iniPath[0]) BuildIniPath();
     WriteStr(L"General", L"RarExtractor",     m_rarExtractor.c_str());
     WriteStr(L"General", L"RarExePath",       m_rarExePath.c_str());
     WriteStr(L"General", L"DefaultOutputDir", m_defaultOutputDir.c_str());
