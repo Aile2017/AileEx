@@ -48,6 +48,7 @@ private:
 
     struct ReaderCtx {
         HANDLE hPipe;
+        HANDLE hProcess;   // プロセス終了待ちと ExitCode 取得用（スレッドが CloseHandle する）
         HWND   hwnd;
         UINT   progressMsg;
         UINT   doneMsg;

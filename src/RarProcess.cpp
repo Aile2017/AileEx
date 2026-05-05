@@ -227,7 +227,12 @@ bool RarProcess::Compress(const std::vector<std::wstring>& srcPaths,
         if (!ok) { CloseHandle(hRead); return false; }
         m_hProcess = pi.hProcess;
         CloseHandle(pi.hThread);
-        auto* ctx = new ReaderCtx{hRead, hwndNotify, progressMsg, doneMsg, &m_cancelFlag};
+        // ReaderCtx にプロセスハンドルを複製して渡す（ExitCode 取得用）
+        HANDLE hProcForReader = INVALID_HANDLE_VALUE;
+        DuplicateHandle(GetCurrentProcess(), m_hProcess,
+                        GetCurrentProcess(), &hProcForReader,
+                        0, FALSE, DUPLICATE_SAME_ACCESS);
+        auto* ctx = new ReaderCtx{hRead, hProcForReader, hwndNotify, progressMsg, doneMsg, &m_cancelFlag};
         m_hReader = CreateThread(nullptr, 0, StdoutReaderThread, ctx, 0, nullptr);
     }
     return true;
@@ -292,7 +297,18 @@ DWORD WINAPI RarProcess::StdoutReaderThread(LPVOID param) {
     }
 
     CloseHandle(ctx->hPipe);
-    PostMessageW(ctx->hwnd, ctx->doneMsg, 0, 0);
+
+    // rar.exe の終了を待ち ExitCode を HRESULT に変換して通知
+    // （パイプ EOF は子プロセス終了後に来るが、念のため待機）
+    HRESULT hr = S_OK;
+    if (ctx->hProcess != INVALID_HANDLE_VALUE) {
+        WaitForSingleObject(ctx->hProcess, INFINITE);
+        DWORD exitCode = 0;
+        if (GetExitCodeProcess(ctx->hProcess, &exitCode) && exitCode != 0)
+            hr = E_FAIL;
+        CloseHandle(ctx->hProcess);
+    }
+    PostMessageW(ctx->hwnd, ctx->doneMsg, (WPARAM)hr, 0);
     delete ctx;
     return 0;
 }
