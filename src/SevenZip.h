@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <vector>
+#include <map>
 #include <string>
 #include "ArchiveItem.h"
 #include "WorkerThread.h"
@@ -8,6 +9,14 @@
 
 typedef HRESULT (WINAPI *Func_GetNumberOfMethods)(UINT32* numMethods);
 typedef HRESULT (WINAPI *Func_GetMethodProperty)(UINT32 index, PROPID propID, PROPVARIANT* value);
+typedef HRESULT (WINAPI *Func_GetNumberOfFormats)(UINT32* numFormats);
+typedef HRESULT (WINAPI *Func_GetHandlerProperty2)(UINT32 index, PROPID propID, PROPVARIANT* value);
+
+// 圧縮ダイアログ用：書き込み可能なフォーマット情報
+struct WritableFormat {
+    std::wstring label;  // 表示名 e.g. "7-Zip (.7z)"
+    std::wstring ext;    // 拡張子 e.g. "7z"
+};
 
 // Advanced compression options passed to SevenZip::Compress().
 // Any empty string means "use default" (property is not sent to 7z.dll).
@@ -54,19 +63,30 @@ public:
     // Empty if DLL is not loaded or enumeration is unavailable.
     const std::vector<std::wstring>& GetEncoderNames() const { return m_encoderNames; }
 
+    // ext は拡張子のみ（ドットなし, 例: L"7z"）。大文字小文字不問。
+    bool IsArchiveExt(const wchar_t* ext) const;
+
+    // 7z.dll が書き込みをサポートするフォーマット一覧（RAR は含まない）。
+    const std::vector<WritableFormat>& GetWritableFormats() const { return m_writableFormats; }
+
 private:
-    HMODULE                    m_hDll              = nullptr;
-    std::wstring               m_loadedName;
-    Func_CreateObject          m_pfnCreateObject   = nullptr;
-    Func_GetNumberOfMethods    m_pfnGetNumMethods  = nullptr;
-    Func_GetMethodProperty     m_pfnGetMethodProp  = nullptr;
-    std::vector<std::wstring>  m_encoderNames;  // lowercased; populated by EnumerateCodecs()
+    HMODULE                      m_hDll               = nullptr;
+    std::wstring                 m_loadedName;
+    Func_CreateObject            m_pfnCreateObject    = nullptr;
+    Func_GetNumberOfMethods      m_pfnGetNumMethods   = nullptr;
+    Func_GetMethodProperty       m_pfnGetMethodProp   = nullptr;
+    Func_GetNumberOfFormats      m_pfnGetNumFormats   = nullptr;
+    Func_GetHandlerProperty2     m_pfnGetHandlerProp2 = nullptr;
+    std::vector<std::wstring>    m_encoderNames;   // lowercased; populated by EnumerateCodecs()
+    std::map<std::wstring, GUID> m_extToClsid;     // 拡張子(小文字) → CLSID
+    std::vector<WritableFormat>  m_writableFormats; // 書き込み可能フォーマット（UI 用）
 
     void EnumerateCodecs();
+    void EnumerateFormats();
 
     HRESULT CreateInArchive(const GUID& clsid, IInArchive** ppArc);
     HRESULT CreateOutArchive(const GUID& clsid, IOutArchive** ppArc);
-    const GUID& FormatToInGuid(const wchar_t* path) const;
-    const GUID& FormatToOutGuid(const wchar_t* format) const;
+    GUID FormatToInGuid(const wchar_t* path) const;
+    GUID FormatToOutGuid(const wchar_t* format) const;
     static std::wstring ExtOfPath(const wchar_t* path);
 };

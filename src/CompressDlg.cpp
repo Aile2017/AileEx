@@ -6,22 +6,17 @@
 #include <commctrl.h>
 #include <commdlg.h>
 
-struct FormatEntry {
-    const wchar_t* label;
-    const wchar_t* id;
-};
+struct MethodEntry { const wchar_t* label; const wchar_t* id; };
 
-static const FormatEntry kFormats[] = {
+// 静的フォールバック（7z.dll が読み込めなかった場合）
+static const WritableFormat kFallbackFormats[] = {
     {L"7-Zip (.7z)",  L"7z"},
     {L"ZIP (.zip)",   L"zip"},
     {L"TAR (.tar)",   L"tar"},
     {L"GZip (.gz)",   L"gz"},
     {L"BZip2 (.bz2)", L"bz2"},
     {L"XZ (.xz)",     L"xz"},
-    {L"RAR (.rar)",   L"rar"},
 };
-
-struct MethodEntry { const wchar_t* label; const wchar_t* id; };
 
 static const MethodEntry kMethods7z[] = {
     {L"LZMA2 (既定)",  L"lzma2"},
@@ -58,9 +53,21 @@ static const MethodEntry kMethodsRar[] = {
 };
 
 bool CompressDlg::Show(HWND hwndParent, Params& params,
-                       const std::vector<std::wstring>* encoderNames) {
+                       const std::vector<std::wstring>* encoderNames,
+                       const std::vector<WritableFormat>* writableFormats) {
     m_params       = params;
     m_encoderNames = encoderNames;
+
+    // フォーマットリストを構築：7z.dll 提供リスト → フォールバック → 末尾に RAR を追加
+    m_writableFormats.clear();
+    if (writableFormats && !writableFormats->empty()) {
+        m_writableFormats = *writableFormats;
+    } else {
+        for (const auto& f : kFallbackFormats)
+            m_writableFormats.push_back(f);
+    }
+    // RAR は rar.exe 経由のため常に末尾に追加
+    m_writableFormats.push_back({L"RAR (.rar)", L"rar"});
     INT_PTR result = DialogBoxParamW(
         GetModuleHandleW(nullptr),
         MAKEINTRESOURCEW(IDD_COMPRESS),
@@ -115,12 +122,13 @@ INT_PTR CompressDlg::HandleMsg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 
 void CompressDlg::OnInit(HWND hwnd) {
-    // Populate format combo
+    // Populate format combo from m_writableFormats
     HWND hFmt = GetDlgItem(hwnd, IDC_FORMAT);
-    for (auto& f : kFormats) {
-        int idx = (int)SendMessageW(hFmt, CB_ADDSTRING, 0, (LPARAM)f.label);
-        SendMessageW(hFmt, CB_SETITEMDATA, idx, (LPARAM)f.id);
-        if (m_params.format == f.id) SendMessageW(hFmt, CB_SETCURSEL, idx, 0);
+    for (const auto& f : m_writableFormats) {
+        int idx = (int)SendMessageW(hFmt, CB_ADDSTRING, 0, (LPARAM)f.label.c_str());
+        // f.ext.c_str() は m_writableFormats が不変な間は安定したポインタ
+        SendMessageW(hFmt, CB_SETITEMDATA, idx, (LPARAM)f.ext.c_str());
+        if (m_params.format == f.ext) SendMessageW(hFmt, CB_SETCURSEL, idx, 0);
     }
     if (SendMessageW(hFmt, CB_GETCURSEL, 0, 0) == CB_ERR)
         SendMessageW(hFmt, CB_SETCURSEL, 0, 0);

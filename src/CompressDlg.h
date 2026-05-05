@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include "SevenZip.h"  // WritableFormat
 
 class CompressDlg {
 public:
@@ -31,9 +32,11 @@ public:
 
     // Returns true if user clicked OK.
     // encoderNames: lowercased encoder names from SevenZip::GetEncoderNames().
-    //               nullptr or empty = no filter (show all methods).
+    // writableFormats: writable formats from SevenZip::GetWritableFormats().
+    //                 nullptr or empty = use static fallback list.
     bool Show(HWND hwndParent, Params& params,
-              const std::vector<std::wstring>* encoderNames = nullptr);
+              const std::vector<std::wstring>* encoderNames = nullptr,
+              const std::vector<WritableFormat>* writableFormats = nullptr);
 
 private:
     static INT_PTR CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
@@ -48,4 +51,5 @@ private:
     HWND   m_hwnd = nullptr;
     Params m_params;
     const std::vector<std::wstring>* m_encoderNames = nullptr;  // not owned
+    std::vector<WritableFormat>      m_writableFormats;          // owned copy（ポインタ安定性のため）
 };

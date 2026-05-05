@@ -385,12 +385,8 @@ void MainWindow::OnDropFiles(HDROP hDrop) {
         const wchar_t* dot = wcsrchr(path.c_str(), L'.');
         bool isArchive = false;
         if (dot) {
-            const wchar_t* kExts[] = {
-                L"7z",L"zip",L"rar",L"tar",L"gz",L"bz2",
-                L"xz",L"cab",L"iso",L"lzh",nullptr
-            };
-            for (int j = 0; kExts[j]; ++j)
-                if (_wcsicmp(dot + 1, kExts[j]) == 0) { isArchive = true; break; }
+            auto& sz7 = App::Instance().Get7z();
+            isArchive = sz7.IsLoaded() && sz7.IsArchiveExt(dot + 1);
         }
         (isArchive ? archives : regular).push_back(std::move(path));
     }
@@ -413,7 +409,8 @@ void MainWindow::OnDropFiles(HDROP hDrop) {
         CompressDlg dlg;
         auto& sz7 = App::Instance().Get7z();
         const auto* enc = sz7.IsLoaded() ? &sz7.GetEncoderNames() : nullptr;
-        if (dlg.Show(m_hwnd, params, enc)) {
+        const auto* wf  = sz7.IsLoaded() ? &sz7.GetWritableFormats() : nullptr;
+        if (dlg.Show(m_hwnd, params, enc, wf)) {
             auto& s = App::Instance().GetSettings();
             s.SetCompressionLevel(params.level);
             s.SetRarLevel(params.rarLevel);
@@ -734,7 +731,8 @@ void MainWindow::OnAddFiles() {
     {
         auto& sz7 = App::Instance().Get7z();
         const auto* enc = sz7.IsLoaded() ? &sz7.GetEncoderNames() : nullptr;
-        if (dlg.Show(m_hwnd, params, enc)) {
+        const auto* wf  = sz7.IsLoaded() ? &sz7.GetWritableFormats() : nullptr;
+        if (dlg.Show(m_hwnd, params, enc, wf)) {
             auto& s = App::Instance().GetSettings();
             s.SetCompressionLevel(params.level);
             s.SetRarLevel(params.rarLevel);
