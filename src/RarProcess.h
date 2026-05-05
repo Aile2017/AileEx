@@ -39,6 +39,15 @@ public:
                   UINT doneMsg,
                   const RarAdvancedParams* adv = nullptr);
 
+    // 既存アーカイブから指定パスのエントリを削除する（rar.exe / WinRAR.exe の `d` コマンド）。
+    // itemPaths はアーカイブ内パス（バックスラッシュ区切り）。フォルダなら配下も再帰削除 (-r)。
+    // 完了通知は doneMsg のみ。`d` は進捗 % 出力がほぼ無いため progressMsg は通常発火しない。
+    bool Delete(const wchar_t* archivePath,
+                const std::vector<std::wstring>& itemPaths,
+                const wchar_t* rarExePathOverride,
+                HWND hwndNotify,
+                UINT doneMsg);
+
     void Cancel();
     bool IsRunning() const;
 

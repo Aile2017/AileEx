@@ -312,3 +312,55 @@ DWORD WINAPI RarProcess::StdoutReaderThread(LPVOID param) {
     delete ctx;
     return 0;
 }
+
+// ---- Delete (rar d) ----
+// `d` コマンドは進捗出力がほぼ無いため stdout 解析は省略し、終了待ち専用。
+// `-y` で確認プロンプトをスキップ、`-r` でフォルダ配下を再帰削除。
+bool RarProcess::Delete(const wchar_t* archivePath,
+                         const std::vector<std::wstring>& itemPaths,
+                         const wchar_t* rarExePathOverride,
+                         HWND hwndNotify,
+                         UINT doneMsg) {
+    std::wstring rarExe;
+    if (rarExePathOverride && rarExePathOverride[0])
+        rarExe = rarExePathOverride;
+    else
+        rarExe = FindRarExe();
+
+    if (rarExe.empty()) {
+        MessageBoxW(hwndNotify,
+                    L"WinRAR.exe / Rar.exe が見つかりません。\n設定でパスを確認してください。",
+                    L"AileEx", MB_ICONERROR);
+        return false;
+    }
+
+    std::wstring cmd = L"\"" + rarExe + L"\" d -y -r \"" + archivePath + L"\"";
+    for (const auto& p : itemPaths)
+        cmd += std::wstring(L" \"") + p + L"\"";
+
+    std::vector<wchar_t> cmdBuf(cmd.begin(), cmd.end());
+    cmdBuf.push_back(L'\0');
+
+    m_cancelFlag = false;
+    PROCESS_INFORMATION pi = {};
+
+    STARTUPINFOW si = {};
+    si.cb = sizeof(si);
+    si.dwFlags     = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    DWORD flags = IsWinRarGui(rarExe) ? 0u : (DWORD)CREATE_NO_WINDOW;
+
+    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr,
+                             FALSE, flags, nullptr, nullptr, &si, &pi);
+    if (!ok) return false;
+
+    m_hProcess = pi.hProcess;
+    CloseHandle(pi.hThread);
+
+    auto* ctx = new WaiterCtx{m_hProcess, hwndNotify, doneMsg, &m_cancelFlag};
+    DuplicateHandle(GetCurrentProcess(), m_hProcess,
+                    GetCurrentProcess(), &ctx->hProcess,
+                    0, FALSE, DUPLICATE_SAME_ACCESS);
+    m_hReader = CreateThread(nullptr, 0, WinrarWaiterThread, ctx, 0, nullptr);
+    return true;
+}

@@ -1400,7 +1400,9 @@ void MainWindow::PopulateTree() {
 
     // Icon indices: archive file icon for root, closed/open folder icons for sub-nodes
     int icoArchive = GetIconIndex(m_archivePath, false);
-    int icoFolder  = GetIconIndex(L"folder", true);
+    if (m_iconIndexFolder < 0)
+        m_iconIndexFolder = GetIconIndex(L"folder", true);
+    int icoFolder  = m_iconIndexFolder;
 
     TV_INSERTSTRUCTW tvi = {};
     tvi.hInsertAfter      = TVI_LAST;
@@ -1546,7 +1548,9 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
             return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
         });
 
-    int icoFolder = GetIconIndex(L"folder", true);
+    if (m_iconIndexFolder < 0)
+        m_iconIndexFolder = GetIconIndex(L"folder", true);
+    int icoFolder = m_iconIndexFolder;
 
     // 仮想フォルダを先に挿入
     for (auto& vd : virtualDirs) {

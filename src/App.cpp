@@ -68,6 +68,7 @@ int App::RunBrowseMode(const std::vector<std::wstring>& archivePaths, int nCmdSh
         { FVIRTKEY | FCONTROL, (WORD)'A',  ID_ADD },
         { FVIRTKEY | FCONTROL, (WORD)'O',  IDM_FILE_OPEN },
         { FVIRTKEY | FCONTROL, (WORD)'T',  ID_TEST },
+        { FVIRTKEY,              VK_DELETE, ID_DELETE     },
         { FVIRTKEY | FCONTROL, VK_F4,     ID_CLOSE      },  // 閉じる: アーカイブを閉じる
         // VK_RETURN は ListView/TreeView 内でコンテキストに応じて処理するためここでは定義しない
         { FVIRTKEY,              VK_ESCAPE, IDM_FILE_EXIT },  // 終了: アプリ終了

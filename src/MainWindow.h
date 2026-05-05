@@ -80,6 +80,7 @@ private:
     bool                     m_draggingSplitter = false;
     bool                     m_treeVisible = true;   // 表示メニューでトグル可能
     bool                     m_toolbarVisible = true; // 表示メニューでトグル可能
+    int                      m_iconIndexFolder = -1; // cached folder icon index
     HMENU                    m_hMruMenu = nullptr;   // 最近使ったアーカイブのサブメニュー
 
     static constexpr int kSplitterW = 5;

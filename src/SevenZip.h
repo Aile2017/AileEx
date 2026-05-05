@@ -54,6 +54,14 @@ public:
                  const wchar_t* password,
                  IExtractProgressSink* sink);
 
+    // 指定インデックスのエントリを削除（残すエントリだけ新アーカイブにコピー）。
+    // 失敗時は元ファイルを変更しない。書き込みをサポートしないフォーマット
+    // (rar/iso/cab 等) では IOutArchive 取得段階で失敗し E_NOTIMPL 等を返す。
+    HRESULT DeleteItems(const wchar_t* archivePath,
+                        const std::vector<UINT32>& deleteIndices,
+                        const wchar_t* password,
+                        IExtractProgressSink* sink);
+
     // Compress srcPaths into outPath.
     HRESULT Compress(const std::vector<std::wstring>& srcPaths,
                      const wchar_t* outPath,

@@ -591,14 +591,7 @@ HRESULT SevenZip::OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& ite
     // in ".tar", extract it to a temp file and re-enumerate so the caller sees
     // the inner tar contents directly.
     {
-        auto getExt = [](const wchar_t* p) -> std::wstring {
-            const wchar_t* d = wcsrchr(p, L'.');
-            if (!d) return L"";
-            std::wstring e(d + 1);
-            for (auto& c : e) c = (wchar_t)towlower(c);
-            return e;
-        };
-        std::wstring outerExt = getExt(path);
+        std::wstring outerExt = ExtOfPath(path);
         if ((outerExt == L"gz" || outerExt == L"bz2" || outerExt == L"xz") &&
             items.size() == 1 && !items[0].isDir)
         {
@@ -608,14 +601,14 @@ HRESULT SevenZip::OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& ite
                 ? items[0].path.c_str()
                 : (!items[0].name.empty() ? items[0].name.c_str() : nullptr);
             bool likelyTar = false;
-            if (innerName && getExt(innerName) == L"tar") {
+            if (innerName && ExtOfPath(innerName) == L"tar") {
                 likelyTar = true;
             } else {
                 // e.g. "aa.tar.bz2" → strip ".bz2" → "aa.tar" → ext "tar"
                 std::wstring outerBase(path);
                 auto lastDot = outerBase.rfind(L'.');
                 if (lastDot != std::wstring::npos) {
-                    if (getExt(outerBase.substr(0, lastDot).c_str()) == L"tar")
+                    if (ExtOfPath(outerBase.substr(0, lastDot).c_str()) == L"tar")
                         likelyTar = true;
                 }
             }
@@ -1420,6 +1413,178 @@ HRESULT SevenZip::Compress(const std::vector<std::wstring>& srcPaths,
 
     if (SUCCEEDED(hr)) {
         if (!MoveFileExW(tempPath.c_str(), outPath, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            hr = HRESULT_FROM_WIN32(GetLastError());
+    } else {
+        DeleteFileW(tempPath.c_str());
+    }
+    return hr;
+}
+
+// ============================================================
+// CDeleteCallback — IArchiveUpdateCallback
+// 残すエントリだけ列挙する。各 newIdx に対して
+// newData=0 / newProperties=0 / indexInArchive=oldIdx を返すと
+// 7z.dll は元アーカイブから圧縮済みブロブをそのままコピーする
+// （再圧縮なし、パスワード不要）。
+// ============================================================
+class CDeleteCallback : public IArchiveUpdateCallback, public ICryptoGetTextPassword2 {
+public:
+    CDeleteCallback(std::vector<UInt32> keepIndices, const wchar_t* password,
+                    IExtractProgressSink* sink)
+        : m_keepIndices(std::move(keepIndices)), m_sink(sink) {
+        if (password) m_password = password;
+    }
+
+    UInt32 Count() const { return (UInt32)m_keepIndices.size(); }
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** ppv) override {
+        if (!ppv) return E_POINTER;
+        if (iid == IID_IUnknown || iid == IID_IArchiveUpdateCallback)
+            *ppv = static_cast<IArchiveUpdateCallback*>(this);
+        else if (iid == IID_ICryptoGetTextPassword2)
+            *ppv = static_cast<ICryptoGetTextPassword2*>(this);
+        else { *ppv = nullptr; return E_NOINTERFACE; }
+        AddRef(); return S_OK;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&m_refCount);
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        LONG r = InterlockedDecrement(&m_refCount);
+        if (r == 0) delete this;
+        return (ULONG)r;
+    }
+
+    HRESULT STDMETHODCALLTYPE SetTotal(UInt64 total) override {
+        if (m_sink) m_sink->OnSetTotal(total);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetCompleted(const UInt64* done) override {
+        if (m_sink && m_sink->IsCancelled()) return E_ABORT;
+        if (m_sink && done) m_sink->OnProgress(*done, nullptr);
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE GetUpdateItemInfo(UInt32 newIdx,
+                                                 Int32* newData,
+                                                 Int32* newProperties,
+                                                 UInt32* indexInArchive) override {
+        if (newIdx >= m_keepIndices.size()) return E_INVALIDARG;
+        if (newData)        *newData        = 0;
+        if (newProperties)  *newProperties  = 0;
+        if (indexInArchive) *indexInArchive = m_keepIndices[newIdx];
+        return S_OK;
+    }
+
+    // newProperties=0 で呼ばれないはずだが念のため空を返す
+    HRESULT STDMETHODCALLTYPE GetProperty(UInt32, PROPID, PROPVARIANT* value) override {
+        PropVariantInit(value);
+        return S_OK;
+    }
+
+    // newData=0 で呼ばれない（コピーは 7z 内部で完結）
+    HRESULT STDMETHODCALLTYPE GetStream(UInt32, ISequentialInStream** inStream) override {
+        if (inStream) *inStream = nullptr;
+        return S_OK;
+    }
+
+    HRESULT STDMETHODCALLTYPE SetOperationResult(Int32) override { return S_OK; }
+
+    HRESULT STDMETHODCALLTYPE CryptoGetTextPassword2(Int32* passwordIsDefined,
+                                                      BSTR* password) override {
+        bool hasPw = !m_password.empty();
+        if (passwordIsDefined) *passwordIsDefined = hasPw ? 1 : 0;
+        *password = SysAllocString(m_password.c_str());
+        return *password ? S_OK : E_OUTOFMEMORY;
+    }
+
+private:
+    std::vector<UInt32>    m_keepIndices;
+    std::wstring           m_password;
+    IExtractProgressSink*  m_sink;
+    LONG                   m_refCount = 1;
+};
+
+// ============================================================
+// DeleteItems
+// ============================================================
+HRESULT SevenZip::DeleteItems(const wchar_t* archivePath,
+                               const std::vector<UInt32>& deleteIndices,
+                               const wchar_t* password,
+                               IExtractProgressSink* sink) {
+    if (!IsLoaded()) return E_FAIL;
+    if (deleteIndices.empty()) return S_OK;
+
+    GUID clsid = FormatToInGuid(archivePath);
+    IInArchive* inArc = nullptr;
+    HRESULT hr = CreateInArchive(clsid, &inArc);
+    if (FAILED(hr) || !inArc) return FAILED(hr) ? hr : E_FAIL;
+
+    CInFileStream* inFile = new CInFileStream();
+    if (!inFile->Open(archivePath)) {
+        DWORD err = GetLastError();
+        inFile->Release();
+        inArc->Release();
+        return HRESULT_FROM_WIN32(err ? err : ERROR_OPEN_FAILED);
+    }
+
+    COpenCallback* openCb = new COpenCallback(password);
+    const UInt64 maxCheck = 1ULL << 23;
+    hr = inArc->Open(inFile, &maxCheck, openCb);
+    openCb->Release();
+    inFile->Release();
+    if (FAILED(hr) || hr == S_FALSE) {
+        inArc->Release();
+        return FAILED(hr) ? hr : E_FAIL;
+    }
+
+    UInt32 totalItems = 0;
+    inArc->GetNumberOfItems(&totalItems);
+
+    // 残すインデックス（昇順）を構築。重複削除は std::set で吸収。
+    std::vector<UInt32> keep;
+    keep.reserve(totalItems);
+    {
+        std::vector<bool> drop(totalItems, false);
+        for (UInt32 i : deleteIndices) {
+            if (i < totalItems) drop[i] = true;
+        }
+        for (UInt32 i = 0; i < totalItems; ++i)
+            if (!drop[i]) keep.push_back(i);
+    }
+
+    // IOutArchive を取得。書き込み未対応フォーマットでは E_NOINTERFACE。
+    IOutArchive* outArc = nullptr;
+    hr = inArc->QueryInterface(IID_IOutArchive, reinterpret_cast<void**>(&outArc));
+    if (FAILED(hr) || !outArc) {
+        inArc->Release();
+        return FAILED(hr) ? hr : E_NOINTERFACE;
+    }
+
+    // 一時ファイルに書き出して成功時のみリネーム（失敗時の元ファイル破壊防止）
+    std::wstring tempPath = std::wstring(archivePath) + L".~tmp";
+    COutFileStream* outFile = new COutFileStream();
+    if (!outFile->Create(tempPath.c_str())) {
+        hr = HRESULT_FROM_WIN32(GetLastError());
+        outFile->Release();
+        outArc->Release();
+        inArc->Release();
+        return hr;
+    }
+
+    CDeleteCallback* cb = new CDeleteCallback(std::move(keep), password, sink);
+    UInt32 keepCount = cb->Count();
+    hr = outArc->UpdateItems(outFile, keepCount, cb);
+
+    cb->Release();
+    outFile->Release();
+    outArc->Release();
+    // 入力ハンドル解放後でないと MoveFileExW が失敗する
+    inArc->Release();
+
+    if (SUCCEEDED(hr)) {
+        if (!MoveFileExW(tempPath.c_str(), archivePath,
+                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             hr = HRESULT_FROM_WIN32(GetLastError());
     } else {
         DeleteFileW(tempPath.c_str());
