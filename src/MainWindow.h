@@ -71,6 +71,7 @@ private:
     bool                     m_openedWithUnrar = false;
     std::vector<ArchiveItem> m_items;
     std::vector<std::wstring> m_folderPaths;  // sorted; index matches TreeView lParam
+    std::wstring             m_currentFolderPath; // currently displayed folder in ListView
     WorkerThread             m_worker;
     ProgressPostSink*        m_pSink = nullptr;
     std::wstring             m_tempViewDir;   // session temp dir; deleted on exit

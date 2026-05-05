@@ -635,6 +635,43 @@ void MainWindow::OnListDblClick() {
     ListView_GetItem(m_hListView, &lvi);
     UINT32 arcIdx = (UINT32)lvi.lParam;
 
+    // Handle ".." (parent directory)
+    if (arcIdx == UINT32_MAX) {
+        if (m_currentFolderPath.empty()) return;
+        
+        // Find parent folder path
+        size_t lastSlash = m_currentFolderPath.rfind(L'/');
+        std::wstring parentPath = (lastSlash != std::wstring::npos) ? 
+            m_currentFolderPath.substr(0, lastSlash) : L"";
+        
+        // Find parent folder in m_folderPaths and navigate
+        for (int i = 0; i < (int)m_folderPaths.size(); ++i) {
+            if (m_folderPaths[i] == parentPath) {
+                // Navigate via TreeView (same as folder navigation)
+                std::function<HTREEITEM(HTREEITEM)> findItem = [&](HTREEITEM h) -> HTREEITEM {
+                    while (h) {
+                        TVITEMW tvi = {}; tvi.hItem = h; tvi.mask = TVIF_PARAM;
+                        TreeView_GetItem(m_hTreeView, &tvi);
+                        if ((int)tvi.lParam == i) return h;
+                        if (HTREEITEM child = TreeView_GetChild(m_hTreeView, h)) {
+                            if (HTREEITEM found = findItem(child)) return found;
+                        }
+                        h = TreeView_GetNextSibling(m_hTreeView, h);
+                    }
+                    return nullptr;
+                };
+                HTREEITEM hRoot = TreeView_GetRoot(m_hTreeView);
+                HTREEITEM hFound = findItem(hRoot);
+                if (hFound) {
+                    TreeView_EnsureVisible(m_hTreeView, hFound);
+                    TreeView_SelectItem(m_hTreeView, hFound);
+                }
+                break;
+            }
+        }
+        return;
+    }
+
     // フォルダパスインデックスを解決してツリー選択に使うヘルパー
     auto navigateToFolderIndex = [&](int fpIdx) {
         std::function<HTREEITEM(HTREEITEM)> findItem = [&](HTREEITEM h) -> HTREEITEM {
@@ -1521,6 +1558,27 @@ static int GetIconIndex(const std::wstring& name, bool isDir) {
 
 void MainWindow::PopulateList(const std::wstring& folderPath) {
     ListView_DeleteAllItems(m_hListView);
+    m_currentFolderPath = folderPath;  // Store current folder
+
+    // Add ".." (parent directory) at the beginning if not at root
+    if (!folderPath.empty()) {
+        int row = 0;
+        LVITEMW lvi = {};
+        lvi.mask     = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
+        lvi.iItem    = row;
+        lvi.iSubItem = 0;
+        // Use UINT32_MAX as special marker for ".."
+        lvi.lParam   = UINT32_MAX;
+        lvi.iImage   = (m_iconIndexFolder < 0) ? 
+            (m_iconIndexFolder = GetIconIndex(L"folder", true)) : m_iconIndexFolder;
+        const wchar_t* parentText = L"..";
+        lvi.pszText  = const_cast<wchar_t*>(parentText);
+        ListView_InsertItem(m_hListView, &lvi);
+        ListView_SetItemText(m_hListView, row, 1, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(L"フォルダ"));
+        ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(L""));
+    }
 
     // Collect items belonging to this folder, split into dirs and files
     struct Row { const ArchiveItem* it; };
