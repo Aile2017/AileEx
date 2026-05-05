@@ -92,8 +92,12 @@ bool UnrarDll::ListArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
         it.crc        = hdr.FileCRC;
         it.hasCrc     = true;
         it.attrib     = hdr.FileAttr;
-        // Convert DOS datetime to FILETIME
-        DosDateTimeToFileTime(HIWORD(hdr.FileTime), LOWORD(hdr.FileTime), &it.mtime);
+        // Convert DOS datetime (local time) to UTC FILETIME
+        {
+            FILETIME localFt = {};
+            DosDateTimeToFileTime(HIWORD(hdr.FileTime), LOWORD(hdr.FileTime), &localFt);
+            LocalFileTimeToFileTime(&localFt, &it.mtime);
+        }
         // Host OS
         static const wchar_t* kOSNames[] = { L"MS-DOS", L"OS/2", L"Windows", L"Unix", L"Mac OS", L"BeOS" };
         it.hostOS = (hdr.HostOS < 6) ? kOSNames[hdr.HostOS] : L"不明";

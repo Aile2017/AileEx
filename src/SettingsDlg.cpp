@@ -164,10 +164,23 @@ bool SettingsDlg::OnOK(HWND hwnd) {
     s.SetRarExtractor(sel == 1 ? L"unrar" : L"7z");
 
     wchar_t buf[MAX_PATH] = {};
-    GetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH,   buf, MAX_PATH); s.SetRarExePath(buf);
-    GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR,    buf, MAX_PATH); s.SetDefaultOutputDir(buf);
-    GetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH,    buf, MAX_PATH); s.Set7zDllPath(buf);
-    GetDlgItemTextW(hwnd, IDC_UNRAR_DLL_PATH, buf, MAX_PATH); s.SetUnrarDllPath(buf);
+    GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, buf, MAX_PATH);
+    s.SetDefaultOutputDir(buf);
+
+    // パスが空のまま（自動検出）だった場合、表示値が自動検出結果と一致するなら
+    // 空文字列を保存して次回も自動検出が機能するようにする。
+    // ユーザーが手動で値を変更した場合はそのまま保存する。
+    auto saveAutoPath = [&hwnd, &s](int ctlId, const std::wstring& currentSaved,
+                                    const std::wstring& autoDetected,
+                                    void (Settings::*setter)(const wchar_t*)) {
+        wchar_t b[MAX_PATH] = {};
+        GetDlgItemTextW(hwnd, ctlId, b, MAX_PATH);
+        bool unchanged = currentSaved.empty() && !autoDetected.empty() && autoDetected == b;
+        (s.*setter)(unchanged ? L"" : b);
+    };
+    saveAutoPath(IDC_7Z_DLL_PATH,    s.Get7zDllPath(),    SevenZip::Find7zDll(),    &Settings::Set7zDllPath);
+    saveAutoPath(IDC_UNRAR_DLL_PATH, s.GetUnrarDllPath(), UnrarDll::FindUnrarDll(), &Settings::SetUnrarDllPath);
+    saveAutoPath(IDC_RAR_EXE_PATH,   s.GetRarExePath(),   RarProcess::FindRarExe(), &Settings::SetRarExePath);
 
     s.Save();
     App::Instance().ReloadDlls();

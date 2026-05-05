@@ -154,3 +154,17 @@ BEGIN
                     7, 7, 326, 253
     DEFPUSHBUTTON   "閉じる", IDOK, 145, 263, 50, 14
 END
+
+/////////////////////////////////////////////////////////////////////////////
+// Password dialog
+/////////////////////////////////////////////////////////////////////////////
+IDD_PASSWORD DIALOGEX 0, 0, 220, 72
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "パスワード"
+FONT 9, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "パスワードを入力してください:", IDC_STATIC, 10, 10, 200, 12
+    EDITTEXT        IDC_PASSWORD_INPUT, 10, 26, 200, 14, ES_AUTOHSCROLL | ES_PASSWORD
+    DEFPUSHBUTTON   "OK",           IDOK,     104, 50, 50, 14
+    PUSHBUTTON      "キャンセル",   IDCANCEL, 158, 50, 50, 14
+END

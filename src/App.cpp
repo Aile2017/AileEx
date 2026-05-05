@@ -139,6 +139,8 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
         rarAdv.recoveryPct = params.rarRecoveryPct;
         rarAdv.splitVolume = params.rarSplitVolume;
         rarAdv.extra       = params.rarExtra;
+        auto* sink = new ProgressPostSink(wnd.Hwnd(), WM_APP_PROGRESS, WM_APP_DONE);
+        progDlg.SetSink(sink);
         RarProcess rar;
         const wchar_t* rarPw = params.password.empty() ? nullptr : params.password.c_str();
         if (!rar.Compress(params.inputFiles, params.outputPath.c_str(),
@@ -147,16 +149,18 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
                           rarPw, params.encryptHeaders,
                           wnd.Hwnd(), WM_APP_PROGRESS, WM_APP_DONE, &rarAdv)) {
             progDlg.Dismiss();
+            delete sink;
             return 0;
         }
         MSG msg = {};
         while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
             if (msg.message == WM_APP_DONE) {
-                progDlg.SetDone(S_OK);
+                progDlg.SetDone((HRESULT)msg.wParam);
                 progDlg.Dismiss();
                 break;
             }
             if (msg.message == WM_APP_PROGRESS) {
+                if (sink->IsCancelled()) rar.Cancel();
                 progDlg.SetProgress((int)msg.wParam, (wchar_t*)msg.lParam);
                 free((wchar_t*)msg.lParam);
                 continue;
@@ -166,6 +170,7 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
                 DispatchMessageW(&msg);
             }
         }
+        delete sink;
     } else {
         auto* sink = new ProgressPostSink(wnd.Hwnd(), WM_APP_PROGRESS, WM_APP_DONE);
         auto& sz   = m_sevenZip;

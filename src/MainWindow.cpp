@@ -92,6 +92,15 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         }
     }
 
+    // 7z Open 失敗時：暗号化ヘッダの可能性があるためパスワードを促してリトライ
+    if (FAILED(hr) && !m_openedWithUnrar && app.Get7z().IsLoaded()) {
+        std::wstring pw = PromptPassword();
+        if (!pw.empty()) {
+            m_items.clear();
+            hr = app.Get7z().OpenArchive(path, m_items, pw.c_str());
+        }
+    }
+
     if (FAILED(hr)) {
         std::wstring msg = L"アーカイブを開けませんでした。";
         if (!app.Get7z().IsLoaded() && !app.GetUnrar().IsLoaded())
@@ -405,6 +414,12 @@ void MainWindow::OnDropFiles(HDROP hDrop) {
         params.solidBlock = App::Instance().GetSettings().GetAdvSolidBlock();
         params.threads    = App::Instance().GetSettings().GetAdvThreads();
         params.extra      = App::Instance().GetSettings().GetAdvExtra();
+        params.rarDictSize    = App::Instance().GetSettings().GetRarAdvDictSize();
+        params.rarSolid       = App::Instance().GetSettings().GetRarAdvSolid();
+        params.rarThreads     = App::Instance().GetSettings().GetRarAdvThreads();
+        params.rarRecoveryPct = App::Instance().GetSettings().GetRarAdvRecovery();
+        params.rarSplitVolume = App::Instance().GetSettings().GetRarAdvVolume();
+        params.rarExtra       = App::Instance().GetSettings().GetRarAdvExtra();
 
         CompressDlg dlg;
         auto& sz7 = App::Instance().Get7z();
@@ -1115,4 +1130,36 @@ void MainWindow::ShowError(const wchar_t* msg, HRESULT hr) {
         text += hrStr;
     }
     MessageBoxW(m_hwnd, text.c_str(), L"AileEx", MB_ICONERROR);
+}
+
+// パスワード入力ダイアログを表示し、入力された文字列を返す。
+// キャンセルされた場合は空文字列を返す。
+std::wstring MainWindow::PromptPassword(const wchar_t* /*hint*/) {
+    struct PwDlg {
+        std::wstring result;
+        static INT_PTR CALLBACK Proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+            if (msg == WM_INITDIALOG) {
+                SetWindowLongPtrW(hwnd, DWLP_USER, lp);
+                return TRUE;
+            }
+            auto* self = reinterpret_cast<PwDlg*>(GetWindowLongPtrW(hwnd, DWLP_USER));
+            if (msg == WM_COMMAND) {
+                if (LOWORD(wp) == IDOK) {
+                    wchar_t buf[512] = {};
+                    GetDlgItemTextW(hwnd, IDC_PASSWORD_INPUT, buf, 512);
+                    if (self) self->result = buf;
+                    EndDialog(hwnd, IDOK);
+                } else if (LOWORD(wp) == IDCANCEL) {
+                    EndDialog(hwnd, IDCANCEL);
+                }
+            }
+            return FALSE;
+        }
+    };
+    PwDlg dlg;
+    INT_PTR res = DialogBoxParamW(
+        GetModuleHandleW(nullptr),
+        MAKEINTRESOURCEW(IDD_PASSWORD),
+        m_hwnd, PwDlg::Proc, (LPARAM)&dlg);
+    return (res == IDOK) ? dlg.result : L"";
 }

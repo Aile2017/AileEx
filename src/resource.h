@@ -14,6 +14,7 @@
 #define IDD_INFO            204
 #define IDD_COMPRESS_ADV    205
 #define IDD_RAR_COMPRESS_ADV  206
+#define IDD_PASSWORD        207
 
 // Compress dialog controls
 #define IDC_OUTPUT_PATH     1001
@@ -60,6 +61,8 @@
 
 // Info dialog controls
 #define IDC_INFO_LIST       5001
+
+#define IDC_PASSWORD_INPUT  8001
 
 // Toolbar / Menu commands
 #define ID_EXTRACT          40001
