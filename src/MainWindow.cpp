@@ -485,33 +485,42 @@ void MainWindow::OnListDblClick() {
     ListView_GetItem(m_hListView, &lvi);
     UINT32 arcIdx = (UINT32)lvi.lParam;
 
+    // フォルダパスインデックスを解決してツリー選択に使うヘルパー
+    auto navigateToFolderIndex = [&](int fpIdx) {
+        std::function<HTREEITEM(HTREEITEM)> findItem = [&](HTREEITEM h) -> HTREEITEM {
+            while (h) {
+                TVITEMW tvi2 = {}; tvi2.hItem = h; tvi2.mask = TVIF_PARAM;
+                TreeView_GetItem(m_hTreeView, &tvi2);
+                if ((int)tvi2.lParam == fpIdx) return h;
+                if (HTREEITEM child = TreeView_GetChild(m_hTreeView, h)) {
+                    if (HTREEITEM found = findItem(child)) return found;
+                }
+                h = TreeView_GetNextSibling(m_hTreeView, h);
+            }
+            return nullptr;
+        };
+        HTREEITEM hRoot  = TreeView_GetRoot(m_hTreeView);
+        HTREEITEM hFound = findItem(hRoot);
+        if (hFound) {
+            TreeView_EnsureVisible(m_hTreeView, hFound);
+            TreeView_SelectItem(m_hTreeView, hFound);
+        }
+    };
+
     if (arcIdx < (UINT32)m_items.size() && m_items[arcIdx].isDir) {
-        // Find the matching folder index and select it in the tree
+        // m_items に実エントリがあるフォルダ
         const std::wstring& targetPath = m_items[arcIdx].path;
         for (int i = 0; i < (int)m_folderPaths.size(); ++i) {
             if (m_folderPaths[i] == targetPath) {
-                // Walk the TreeView to find the HTREEITEM with lParam==i
-                std::function<HTREEITEM(HTREEITEM)> findItem = [&](HTREEITEM h) -> HTREEITEM {
-                    while (h) {
-                        TVITEMW tvi2 = {}; tvi2.hItem = h; tvi2.mask = TVIF_PARAM;
-                        TreeView_GetItem(m_hTreeView, &tvi2);
-                        if ((int)tvi2.lParam == i) return h;
-                        if (HTREEITEM child = TreeView_GetChild(m_hTreeView, h)) {
-                            if (HTREEITEM found = findItem(child)) return found;
-                        }
-                        h = TreeView_GetNextSibling(m_hTreeView, h);
-                    }
-                    return nullptr;
-                };
-                HTREEITEM hRoot = TreeView_GetRoot(m_hTreeView);
-                HTREEITEM hFound = findItem(hRoot);
-                if (hFound) {
-                    TreeView_EnsureVisible(m_hTreeView, hFound);
-                    TreeView_SelectItem(m_hTreeView, hFound);
-                }
+                navigateToFolderIndex(i);
                 break;
             }
         }
+    } else if (arcIdx >= (UINT32)m_items.size()) {
+        // 仮想フォルダ（unrar.dll 等でエントリが省略されたフォルダ）
+        int fpIdx = (int)(arcIdx - (UINT32)m_items.size());
+        if (fpIdx < (int)m_folderPaths.size())
+            navigateToFolderIndex(fpIdx);
     }
 }
 
@@ -1002,14 +1011,19 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
     // Collect items belonging to this folder, split into dirs and files
     struct Row { const ArchiveItem* it; };
     std::vector<Row> dirs, files;
+    std::set<std::wstring> explicitDirPaths;  // m_items に実在するフォルダパス
     for (auto& it : m_items) {
         std::wstring itemDir;
         auto pos = it.path.rfind(L'/');
         if (pos != std::wstring::npos) itemDir = it.path.substr(0, pos);
         if (itemDir != folderPath) continue;
         if (it.name.empty()) continue;
-        if (it.isDir) dirs.push_back({&it});
-        else          files.push_back({&it});
+        if (it.isDir) {
+            dirs.push_back({&it});
+            explicitDirPaths.insert(it.path);
+        } else {
+            files.push_back({&it});
+        }
     }
 
     // Sort each group by the current sort column/direction (folders always first)
@@ -1042,6 +1056,53 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
     std::vector<Row> rows;
     rows.insert(rows.end(), dirs.begin(),  dirs.end());
     rows.insert(rows.end(), files.begin(), files.end());
+
+    // unrar.dll 等でフォルダエントリが省略されているアーカイブ向け:
+    // m_folderPaths から folderPath の直下フォルダを探し、m_items に実エントリが
+    // ないものは仮想フォルダ行として先頭（実フォルダ行の前）に追加する。
+    // lParam = m_items.size() + m_folderPaths インデックス で識別。
+    struct VirtualDirRow { std::wstring name; int fpIdx; };
+    std::vector<VirtualDirRow> virtualDirs;
+    for (int i = 1; i < (int)m_folderPaths.size(); ++i) {
+        const std::wstring& fp = m_folderPaths[i];
+        // fp が folderPath の直接の子か確認
+        std::wstring parentPath;
+        auto slash = fp.rfind(L'/');
+        if (slash != std::wstring::npos) parentPath = fp.substr(0, slash);
+        if (parentPath != folderPath) continue;
+        // 実エントリが既にある場合はスキップ
+        if (explicitDirPaths.count(fp)) continue;
+        std::wstring leafName = (slash != std::wstring::npos) ? fp.substr(slash + 1) : fp;
+        if (!leafName.empty())
+            virtualDirs.push_back({std::move(leafName), i});
+    }
+    // 名前順ソート（ソートカラムに依らず名前昇順固定で十分; 実フォルダ群とまとめて先頭に置く）
+    std::sort(virtualDirs.begin(), virtualDirs.end(),
+        [](const VirtualDirRow& a, const VirtualDirRow& b) {
+            return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
+        });
+
+    int icoFolder = GetIconIndex(L"folder", true);
+
+    // 仮想フォルダを先に挿入
+    for (auto& vd : virtualDirs) {
+        int row = ListView_GetItemCount(m_hListView);
+
+        LVITEMW lvi = {};
+        lvi.mask     = LVIF_TEXT | LVIF_PARAM | LVIF_IMAGE;
+        lvi.iItem    = row;
+        lvi.iSubItem = 0;
+        // m_items 範囲外のオフセットで仮想フォルダと識別
+        lvi.lParam   = (LPARAM)((UINT32)m_items.size() + (UINT32)vd.fpIdx);
+        lvi.iImage   = icoFolder;
+        lvi.pszText  = const_cast<wchar_t*>(vd.name.c_str());
+        ListView_InsertItem(m_hListView, &lvi);
+
+        ListView_SetItemText(m_hListView, row, 1, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(L"フォルダ"));
+        ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(L""));
+    }
 
     for (auto& r : rows) {
         const ArchiveItem& it = *r.it;
