@@ -15,6 +15,26 @@
 #include <algorithm>
 #include <set>
 
+namespace {
+// ランチャー経由起動などで親プロセスが既に終了しているケース向けの
+// フォアグラウンド奪取。SetForegroundWindow 単独では制限で降格されるので、
+// フォアグラウンドアプリのスレッドにアタッチした上で TopMost を一瞬付けて
+// Z オーダーを押し出してから呼ぶ。
+void ForceForeground(HWND hwnd) {
+    HWND  fg    = GetForegroundWindow();
+    DWORD fgTid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+    DWORD myTid = GetCurrentThreadId();
+    bool  attach = (fgTid && fgTid != myTid);
+
+    if (attach) AttachThreadInput(myTid, fgTid, TRUE);
+    SetWindowPos(hwnd, HWND_TOPMOST,   0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    SetForegroundWindow(hwnd);
+    SetFocus(hwnd);
+    if (attach) AttachThreadInput(myTid, fgTid, FALSE);
+}
+}
+
 bool MainWindow::RegisterClass(HINSTANCE hInst) {
     WNDCLASSEXW wc  = {};
     wc.cbSize        = sizeof(wc);
@@ -48,6 +68,7 @@ bool MainWindow::Create(HINSTANCE hInst, int nCmdShow) {
     if (s.GetWindowMaximized() && nCmdShow == SW_SHOWDEFAULT)
         nCmdShow = SW_SHOWMAXIMIZED;
     ShowWindow(hwnd, nCmdShow);
+    ForceForeground(hwnd);
     UpdateWindow(hwnd);
     return true;
 }
