@@ -91,12 +91,12 @@ END
 /////////////////////////////////////////////////////////////////////////////
 // Advanced compression dialog
 /////////////////////////////////////////////////////////////////////////////
-IDD_COMPRESS_ADV DIALOGEX 0, 0, 290, 195
+IDD_COMPRESS_ADV DIALOGEX 0, 0, 290, 215
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "詳細圧縮設定"
 FONT 9, "MS Shell Dlg", 400, 0, 0x1
 BEGIN
-    GROUPBOX        "圧縮オプション",        IDC_STATIC,     7,   4, 276, 150
+    GROUPBOX        "圧縮オプション",        IDC_STATIC,     7,   4, 276, 170
     LTEXT           "辞書サイズ:",           IDC_STATIC,    14,  20,  58,   8
     COMBOBOX        IDC_ADV_DICT,           76,  18, 110, 130, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "ワードサイズ:",         IDC_STATIC,    14,  38,  58,   8
@@ -105,13 +105,16 @@ BEGIN
     COMBOBOX        IDC_ADV_SOLID,          76,  54, 110, 130, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
     LTEXT           "スレッド数:",           IDC_STATIC,    14,  74,  58,   8
     COMBOBOX        IDC_ADV_THREADS,        76,  72, 110, 130, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
-    LTEXT           "追加パラメーター:",     IDC_STATIC,    14,  96,  68,   8
-    LTEXT           "(例: mf=bt4 mpass=2)", IDC_STATIC,    14, 106,  90,   8
-    EDITTEXT        IDC_ADV_PARAMS,         14, 118, 256,  14, ES_AUTOHSCROLL
-    LTEXT           "※ 7z形式以外ではソリッドブロックは無効です。", IDC_STATIC, 14, 140, 260, 8
+    LTEXT           "分割ボリューム:",       IDC_STATIC,    14,  92,  58,   8
+    COMBOBOX        IDC_ADV_VOLUME,         76,  90, 110, 130, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "追加パラメーター:",     IDC_STATIC,    14, 112,  68,   8
+    LTEXT           "(例: mf=bt4 mpass=2)", IDC_STATIC,    14, 122,  90,   8
+    EDITTEXT        IDC_ADV_PARAMS,         14, 134, 256,  14, ES_AUTOHSCROLL
+    LTEXT           "※ 7z形式以外ではソリッドブロックは無効です。",     IDC_STATIC, 14, 154, 260, 8
+    LTEXT           "※ 分割ボリュームは gz/bz2/xz/tar では適用されません。", IDC_STATIC, 14, 162, 260, 8
 
-    DEFPUSHBUTTON   "OK",              IDOK,          176, 175,  50,  14
-    PUSHBUTTON      "キャンセル",       IDCANCEL,      233, 175,  50,  14
+    DEFPUSHBUTTON   "OK",              IDOK,          176, 195,  50,  14
+    PUSHBUTTON      "キャンセル",       IDCANCEL,      233, 195,  50,  14
 END
 
 /////////////////////////////////////////////////////////////////////////////

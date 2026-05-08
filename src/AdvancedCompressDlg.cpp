@@ -72,6 +72,19 @@ static const ComboEntry kThreads[] = {
     {L"32",  L"32"},
 };
 
+// ---- \u5206\u5272\u30dc\u30ea\u30e5\u30fc\u30e0 ----
+static const ComboEntry kVolumes[] = {
+    {L"\u306a\u3057",        L""},
+    {L"1 MB",       L"1m"},
+    {L"10 MB",      L"10m"},
+    {L"50 MB",      L"50m"},
+    {L"100 MB",     L"100m"},
+    {L"200 MB",     L"200m"},
+    {L"700 MB (CD)", L"700m"},
+    {L"1 GB",        L"1g"},
+    {L"4480 MB (DVD)", L"4480m"},
+};
+
 // ---- Helper: ComboBox \u306e\u521d\u671f\u5316\u3068\u9078\u629e ----
 static void FillCombo(HWND hCombo, const ComboEntry* arr, int count,
                       const std::wstring& curVal) {
@@ -170,6 +183,14 @@ void AdvancedCompressDlg::OnInit(HWND hwnd) {
         SendMessageW(hThreads, CB_SETCURSEL, sel, 0);
     }
 
+    // 分割ボリューム (7z/zip 等で有効。gz/bz2/xz/tar では Compress 内で無視される)
+    {
+        HWND hVol = GetDlgItem(hwnd, IDC_ADV_VOLUME);
+        FillCombo(hVol, kVolumes, (int)_countof(kVolumes), m_params.volumeSize);
+        bool splittable = (m_format == L"7z" || m_format == L"zip");
+        EnableWindow(hVol, splittable ? TRUE : FALSE);
+    }
+
     SetDlgItemTextW(hwnd, IDC_ADV_PARAMS, m_params.extra.c_str());
 }
 
@@ -186,6 +207,7 @@ bool AdvancedCompressDlg::OnOK(HWND hwnd) {
     m_params.wordSize   = getComboVal(IDC_ADV_WORD);
     m_params.solidBlock = getComboVal(IDC_ADV_SOLID);
     m_params.threads    = getComboVal(IDC_ADV_THREADS);
+    m_params.volumeSize = getComboVal(IDC_ADV_VOLUME);
 
     wchar_t buf[512] = {};
     GetDlgItemTextW(hwnd, IDC_ADV_PARAMS, buf, 512);

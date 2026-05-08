@@ -42,6 +42,7 @@
 #define IDC_ADV_SOLID       6003
 #define IDC_ADV_THREADS     6004
 #define IDC_ADV_PARAMS      6005
+#define IDC_ADV_VOLUME      6006
 
 // RAR Advanced compress dialog controls
 #define IDC_RAR_ADV_DICT      7001

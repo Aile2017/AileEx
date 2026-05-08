@@ -69,8 +69,10 @@ private:
     HWND        m_hStatus      = nullptr;
     HIMAGELIST  m_hSysImageList = nullptr;
 
-    std::wstring             m_archivePath;
+    std::wstring             m_archivePath;          // 表示用の元パス (例: xx.001)
+    std::wstring             m_effectiveArchivePath; // 操作実体のパス (split 自動アンラップ時のみ m_archivePath と異なる)
     bool                     m_openedWithUnrar = false;
+    bool                     m_isReadOnly      = false;  // split 自動アンラップ等で書込操作を禁止
     std::vector<ArchiveItem> m_items;
     std::vector<std::wstring> m_folderPaths;  // sorted; index matches TreeView lParam
     std::wstring             m_currentFolderPath; // currently displayed folder in ListView

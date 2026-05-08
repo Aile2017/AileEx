@@ -16,6 +16,7 @@ void CompressDlg::Params::LoadFromSettings(const Settings& s) {
     solidBlock     = s.GetAdvSolidBlock();
     threads        = s.GetAdvThreads();
     extra          = s.GetAdvExtra();
+    volumeSize     = s.GetAdvVolume();
     rarDictSize    = s.GetRarAdvDictSize();
     rarSolid       = s.GetRarAdvSolid();
     rarThreads     = s.GetRarAdvThreads();
@@ -33,6 +34,7 @@ void CompressDlg::Params::SaveToSettings(Settings& s) const {
     s.SetAdvSolidBlock(solidBlock.c_str());
     s.SetAdvThreads(threads.c_str());
     s.SetAdvExtra(extra.c_str());
+    s.SetAdvVolume(volumeSize.c_str());
     s.SetRarAdvDictSize(rarDictSize.c_str());
     s.SetRarAdvSolid(rarSolid);
     s.SetRarAdvThreads(rarThreads);
@@ -353,6 +355,7 @@ void CompressDlg::OnAdvanced(HWND hwnd) {
         advParams.solidBlock = m_params.solidBlock;
         advParams.threads    = m_params.threads;
         advParams.extra      = m_params.extra;
+        advParams.volumeSize = m_params.volumeSize;
 
         AdvancedCompressDlg advDlg;
         if (advDlg.Show(hwnd, fmt.c_str(), advParams)) {
@@ -361,6 +364,7 @@ void CompressDlg::OnAdvanced(HWND hwnd) {
             m_params.solidBlock = advParams.solidBlock;
             m_params.threads    = advParams.threads;
             m_params.extra      = advParams.extra;
+            m_params.volumeSize = advParams.volumeSize;
         }
     }
 }

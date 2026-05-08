@@ -34,6 +34,14 @@ struct IArchiveOpenCallback : public IUnknown {
     virtual HRESULT STDMETHODCALLTYPE SetCompleted(const UInt64* files, const UInt64* bytes) = 0;
 };
 
+// ---- IArchiveOpenVolumeCallback ----
+// 分割アーカイブ（.001/.002/...）読み込み時に Split ハンドラから呼ばれる。
+// kpidName で第1巻のパス、GetStream で要求された名前のボリュームを返す。
+struct IArchiveOpenVolumeCallback : public IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE GetProperty(PROPID propID, PROPVARIANT* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetStream(const wchar_t* name, IInStream** inStream) = 0;
+};
+
 // ---- IArchiveExtractCallback ----
 struct IArchiveExtractCallback : public IProgress {
     virtual HRESULT STDMETHODCALLTYPE GetStream(UInt32 index, ISequentialOutStream** outStream, Int32 askExtractMode) = 0;

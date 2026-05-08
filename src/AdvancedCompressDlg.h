@@ -12,6 +12,7 @@ public:
         std::wstring solidBlock;  // "" = default; "off","1m","4g" (7z only)
         std::wstring threads;     // "" = auto; "1","4","8"
         std::wstring extra;       // free-form "key=value" pairs
+        std::wstring volumeSize;  // "" = no split; "10m","100m","1g" 等で分割サイズ
     };
 
     // format: 現在選択中の圧縮形式 ("7z","zip" など)

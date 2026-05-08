@@ -35,6 +35,7 @@ void Settings::Load() {
     m_advSolidBlock = ReadStr(L"AdvancedCompress", L"SolidBlock", L"");
     m_advThreads    = ReadStr(L"AdvancedCompress", L"Threads",    L"");
     m_advExtra      = ReadStr(L"AdvancedCompress", L"Extra",      L"");
+    m_advVolume     = ReadStr(L"AdvancedCompress", L"Volume",     L"");
 
     // RAR advanced compress options
     m_rarAdvDictSize  = ReadStr(L"RarAdvanced", L"DictSize",  L"");
@@ -94,6 +95,7 @@ void Settings::Save() const {
     WriteStr(L"AdvancedCompress", L"SolidBlock", m_advSolidBlock.c_str());
     WriteStr(L"AdvancedCompress", L"Threads",    m_advThreads.c_str());
     WriteStr(L"AdvancedCompress", L"Extra",      m_advExtra.c_str());
+    WriteStr(L"AdvancedCompress", L"Volume",     m_advVolume.c_str());
 
     // RAR advanced compress options
     WriteStr(L"RarAdvanced", L"DictSize",  m_rarAdvDictSize.c_str());

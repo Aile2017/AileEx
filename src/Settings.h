@@ -39,11 +39,13 @@ public:
     const std::wstring& GetAdvSolidBlock() const    { return m_advSolidBlock; }
     const std::wstring& GetAdvThreads() const       { return m_advThreads; }
     const std::wstring& GetAdvExtra() const         { return m_advExtra; }
+    const std::wstring& GetAdvVolume() const        { return m_advVolume; }
     void SetAdvDictSize(const wchar_t* v)           { m_advDictSize   = v; }
     void SetAdvWordSize(const wchar_t* v)           { m_advWordSize   = v; }
     void SetAdvSolidBlock(const wchar_t* v)         { m_advSolidBlock = v; }
     void SetAdvThreads(const wchar_t* v)            { m_advThreads    = v; }
     void SetAdvExtra(const wchar_t* v)              { m_advExtra      = v; }
+    void SetAdvVolume(const wchar_t* v)             { m_advVolume     = v; }
 
     // RAR advanced options (last-used values)
     const std::wstring& GetRarAdvDictSize() const   { return m_rarAdvDictSize; }
@@ -102,6 +104,7 @@ private:
     std::wstring m_advSolidBlock;
     std::wstring m_advThreads;
     std::wstring m_advExtra;
+    std::wstring m_advVolume;
     // RAR advanced
     std::wstring m_rarAdvDictSize;
     bool         m_rarAdvSolid    = true;

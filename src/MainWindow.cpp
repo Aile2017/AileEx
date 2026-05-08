@@ -50,7 +50,8 @@ int CountTopLevelEntries(const std::vector<ArchiveItem>& items) {
     return (int)tops.size();
 }
 
-// アーカイブパスからサブフォルダ名を生成（複合拡張子を除去: archive.tar.gz → archive）
+// アーカイブパスからサブフォルダ名を生成（複合拡張子を除去: archive.tar.gz → archive,
+// archive.7z.001 → archive）
 std::wstring ArchiveBaseName(const std::wstring& archivePath) {
     static const wchar_t* kExts[] = {
         L".7z", L".zip", L".rar", L".tar", L".gz", L".bz2", L".xz",
@@ -61,6 +62,18 @@ std::wstring ArchiveBaseName(const std::wstring& archivePath) {
     bool stripped = true;
     while (stripped) {
         stripped = false;
+        // 全数字の末尾拡張子 (.001 等) を剥がす
+        auto dot = name.rfind(L'.');
+        if (dot != std::wstring::npos && dot + 1 < name.size()) {
+            bool allDigits = true;
+            for (size_t i = dot + 1; i < name.size(); ++i)
+                if (!iswdigit(name[i])) { allDigits = false; break; }
+            if (allDigits) {
+                name = name.substr(0, dot);
+                stripped = true;
+                continue;
+            }
+        }
         for (int i = 0; kExts[i]; ++i) {
             size_t elen = wcslen(kExts[i]);
             if (name.size() <= elen) continue;
@@ -137,7 +150,14 @@ bool MainWindow::Create(HINSTANCE hInst, int nCmdShow) {
 }
 
 void MainWindow::OpenArchive(const wchar_t* path) {
+    // 既に開いていた split アンラップの一時ファイルを削除（差替え時のリーク防止）
+    if (!m_effectiveArchivePath.empty() &&
+        _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
+        DeleteFileW(m_effectiveArchivePath.c_str());
+    }
     m_archivePath = path;
+    m_effectiveArchivePath = path;
+    m_isReadOnly = false;
     m_items.clear();
 
     App& app = App::Instance();
@@ -160,12 +180,12 @@ void MainWindow::OpenArchive(const wchar_t* path) {
             hr = S_OK;
             m_openedWithUnrar = true;
         } else if (app.Get7z().IsLoaded()) {
-            hr = app.Get7z().OpenArchive(path, m_items);
+            hr = app.Get7z().OpenArchive(path, m_items, nullptr, &m_effectiveArchivePath);
         }
     } else {
         // Try 7z first
         if (app.Get7z().IsLoaded()) {
-            hr = app.Get7z().OpenArchive(path, m_items);
+            hr = app.Get7z().OpenArchive(path, m_items, nullptr, &m_effectiveArchivePath);
         }
         // If 7z failed for a RAR file, try unrar as fallback
         if (FAILED(hr) && isRar && app.GetUnrar().IsLoaded()) {
@@ -182,8 +202,14 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         std::wstring pw = PromptPassword();
         if (!pw.empty()) {
             m_items.clear();
-            hr = app.Get7z().OpenArchive(path, m_items, pw.c_str());
+            hr = app.Get7z().OpenArchive(path, m_items, pw.c_str(), &m_effectiveArchivePath);
         }
+    }
+
+    // split 自動アンラップを検出 → read-only として扱う
+    if (SUCCEEDED(hr) &&
+        _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
+        m_isReadOnly = true;
     }
 
     if (FAILED(hr)) {
@@ -402,6 +428,11 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
             fop.pFrom  = dir.c_str();
             fop.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
             SHFileOperationW(&fop);
+        }
+        // split 自動アンラップで作成した一時ファイルがあれば掃除
+        if (!m_effectiveArchivePath.empty() &&
+            _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
+            DeleteFileW(m_effectiveArchivePath.c_str());
         }
         PostQuitMessage(0);
         return 0;
@@ -815,7 +846,7 @@ void MainWindow::OnOpenAssoc() {
 
     // Extract single file to temp dir
     std::vector<UINT32> indices = { idx };
-    HRESULT hr = app.Get7z().Extract(m_archivePath.c_str(), indices,
+    HRESULT hr = app.Get7z().Extract(m_effectiveArchivePath.c_str(), indices,
                                       tempDir.c_str(), nullptr, nullptr);
     if (FAILED(hr)) {
         ShowError(L"ファイルの取り出しに失敗しました。", hr);
@@ -891,7 +922,7 @@ void MainWindow::OnExtract() {
     m_pSink    = sink;
     progDlg.SetSink(sink);
 
-    auto archivePath = m_archivePath;
+    auto archivePath = m_effectiveArchivePath;
 
     if (useUnrar) {
         auto& unrar = app.GetUnrar();
@@ -1002,7 +1033,7 @@ void MainWindow::OnExtractSelected() {
     m_pSink    = sink;
     progDlg.SetSink(sink);
 
-    auto archivePath = m_archivePath;
+    auto archivePath = m_effectiveArchivePath;
 
     if (useUnrar) {
         // unrar 経路: 対象パスセットを構築して選択展開
@@ -1034,7 +1065,7 @@ void MainWindow::OnExtractSelected() {
 void MainWindow::OnContextMenu(HWND /*hwndFrom*/, int x, int y) {
     if (m_archivePath.empty()) return;
 
-    bool readOnly = m_openedWithUnrar;
+    bool readOnly = m_openedWithUnrar || m_isReadOnly;
     int selCount  = ListView_GetSelectedCount(m_hListView);
 
     HMENU hMenu = CreatePopupMenu();
@@ -1083,7 +1114,7 @@ void MainWindow::OnTest() {
     m_pSink    = sink;
     progDlg.SetSink(sink);
 
-    auto archivePath = m_archivePath;
+    auto archivePath = m_effectiveArchivePath;
 
     if (useUnrar) {
         auto& unrar = app.GetUnrar();
@@ -1349,7 +1380,7 @@ void MainWindow::OnToggleToolbar() {
 // すだけで副作用なし。全コマンドを毎回呼んで問題ない。
 void MainWindow::OnInitMenuPopup(HMENU hMenu) {
     bool hasArchive = !m_archivePath.empty();
-    bool readOnly   = m_openedWithUnrar;
+    bool readOnly   = m_openedWithUnrar || m_isReadOnly;
     int  selCount   = m_hListView ? ListView_GetSelectedCount(m_hListView) : 0;
 
     auto setEnabled = [hMenu](UINT id, bool enabled) {
@@ -1371,10 +1402,17 @@ void MainWindow::OnInitMenuPopup(HMENU hMenu) {
 
 void MainWindow::CloseArchive() {
     if (m_archivePath.empty()) return;
+    // split 自動アンラップで作成した一時ファイルを掃除
+    if (!m_effectiveArchivePath.empty() &&
+        _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
+        DeleteFileW(m_effectiveArchivePath.c_str());
+    }
     m_archivePath.clear();
+    m_effectiveArchivePath.clear();
     m_items.clear();
     m_folderPaths.clear();
     m_openedWithUnrar = false;
+    m_isReadOnly = false;
 
     if (m_hTreeView) TreeView_DeleteAllItems(m_hTreeView);
     if (m_hListView) ListView_DeleteAllItems(m_hListView);
@@ -1459,7 +1497,7 @@ void MainWindow::OnInfo() {
 }
 
 void MainWindow::OnDelete() {
-    if (m_archivePath.empty() || m_openedWithUnrar) return;
+    if (m_archivePath.empty() || m_openedWithUnrar || m_isReadOnly) return;
 
     // ListView 選択を実エントリ集合に解決する。
     //  - 実エントリ (lParam < m_items.size())：そのインデックスを採用
@@ -1522,7 +1560,7 @@ void MainWindow::OnDelete() {
     progDlg.SetSink(sink);
 
     HRESULT hrDone = S_OK;
-    auto archivePath = m_archivePath;
+    auto archivePath = m_effectiveArchivePath;
 
     if (isRar) {
         // RAR: rar.exe d -y -r でフォルダ含めて削除
@@ -1614,15 +1652,17 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
         auto advSolid   = params.solidBlock;
         auto advThreads = params.threads;
         auto advExtra   = params.extra;
+        auto advVolume  = params.volumeSize;
         bool encHdr     = params.encryptHeaders;
         m_worker.Start([&sz, inputs, outPath, format, level, method, pw, sink,
-                        advDict, advWord, advSolid, advThreads, advExtra, encHdr]() -> HRESULT {
+                        advDict, advWord, advSolid, advThreads, advExtra, advVolume, encHdr]() -> HRESULT {
             CompressAdvanced adv;
             adv.dictSize   = advDict;
             adv.wordSize   = advWord;
             adv.solidBlock = advSolid;
             adv.threads    = advThreads;
             adv.extra      = advExtra;
+            adv.volumeSize = advVolume;
             return sz.Compress(inputs, outPath.c_str(), format.c_str(),
                                level, method.c_str(), pw.empty() ? nullptr : pw.c_str(),
                                sink, &adv, encHdr);

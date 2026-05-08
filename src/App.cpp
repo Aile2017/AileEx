@@ -135,6 +135,7 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
             adv.solidBlock = params.solidBlock;
             adv.threads    = params.threads;
             adv.extra      = params.extra;
+            adv.volumeSize = params.volumeSize;
             return sz.Compress(params.inputFiles, params.outputPath.c_str(),
                                params.format.c_str(), params.level,
                                params.method.c_str(), pw, sink, &adv,

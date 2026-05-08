@@ -26,6 +26,9 @@ struct CompressAdvanced {
     std::wstring solidBlock;  // "off","1m","4g" — solid block size (7z only)
     std::wstring threads;     // "1","4","8" — CPU threads (mt)
     std::wstring extra;       // free-form "key=value" pairs (e.g. "mf=bt4 mpass=2")
+    // 分割ボリュームサイズ。"" = 単一ファイル / "10m","100m","1g" 等で指定。
+    // 7z/zip 等のシーカブル出力でのみ有効 (gz/bz2/xz/tar の stream wrapping パスでは無視)。
+    std::wstring volumeSize;
 };
 
 class SevenZip {
@@ -38,8 +41,13 @@ public:
     std::wstring GetLoadedPath() const;
 
     // Detect archive format by extension and open, filling items.
+    // 分割アーカイブ (.001/.002/...) の場合は内部アーカイブを一時ファイルへ展開して
+    // 再オープンし、中身のエントリを items に返す。effectivePath が non-null なら
+    // 後続の Extract/Test 等で使うべきパス（通常は path、自動アンラップ時は一時パス）を書き戻す。
+    // 一時ファイルの削除は呼出側の責任。
     HRESULT OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
-                        const wchar_t* password = nullptr);
+                        const wchar_t* password = nullptr,
+                        std::wstring* effectivePath = nullptr);
 
     // Extract. indices empty = extract all.
     HRESULT Extract(const wchar_t* archivePath,

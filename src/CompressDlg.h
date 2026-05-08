@@ -23,6 +23,7 @@ public:
         std::wstring solidBlock;  // "" = default; "off","1m" (7z only)
         std::wstring threads;     // "" = auto; "4","8"
         std::wstring extra;       // free-form "key=value" pairs
+        std::wstring volumeSize;  // "" = no split; "100m","1g" 等 (7z/zip のみ)
         // RAR-specific advanced options
         std::wstring rarDictSize;    // "" = auto; "128k","1m","4g"
         bool         rarSolid       = true;
