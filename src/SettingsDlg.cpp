@@ -100,11 +100,15 @@ void SettingsDlg::OnInit(HWND hwnd) {
     Settings& s = App::Instance().GetSettings();
 
     // RAR extractor combo
+    // unrar.dll がロードされている場合のみ選択肢として追加する
     HWND hExt = GetDlgItem(hwnd, IDC_RAR_EXTRACTOR);
+    bool unrarLoaded = App::Instance().GetUnrar().IsLoaded();
     SendMessageW(hExt, CB_ADDSTRING, 0, (LPARAM)L"7z.dll (7-Zip)");
-    SendMessageW(hExt, CB_ADDSTRING, 0, (LPARAM)L"unrar.dll (UnRAR)");
-    SendMessageW(hExt, CB_SETCURSEL,
-                 (s.GetRarExtractor() == L"unrar") ? 1 : 0, 0);
+    if (unrarLoaded)
+        SendMessageW(hExt, CB_ADDSTRING, 0, (LPARAM)L"unrar.dll (UnRAR)");
+    // unrar.dll が未ロードなら設定値が "unrar" でも 7z にフォールバック
+    int extSel = (unrarLoaded && s.GetRarExtractor() == L"unrar") ? 1 : 0;
+    SendMessageW(hExt, CB_SETCURSEL, extSel, 0);
 
     // Default output dir
     SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, s.GetDefaultOutputDir().c_str());
