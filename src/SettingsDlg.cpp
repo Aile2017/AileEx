@@ -109,6 +109,14 @@ void SettingsDlg::OnInit(HWND hwnd) {
     // Default output dir
     SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, s.GetDefaultOutputDir().c_str());
 
+    // MkDir policy radio buttons
+    {
+        int v = s.GetMkDir();
+        if (v < 0) v = 0;
+        if (v > 3) v = 3;
+        CheckRadioButton(hwnd, IDC_MKDIR_0, IDC_MKDIR_3, IDC_MKDIR_0 + v);
+    }
+
     // DLL / exe paths: show saved value, or auto-detect if empty
     auto resolve = [](const std::wstring& saved, const std::wstring& detected) {
         return saved.empty() ? detected : saved;
@@ -166,6 +174,13 @@ bool SettingsDlg::OnOK(HWND hwnd) {
     wchar_t buf[MAX_PATH] = {};
     GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, buf, MAX_PATH);
     s.SetDefaultOutputDir(buf);
+
+    // MkDir policy
+    int mkDir = 2;
+    for (int i = 0; i <= 3; ++i) {
+        if (IsDlgButtonChecked(hwnd, IDC_MKDIR_0 + i) == BST_CHECKED) { mkDir = i; break; }
+    }
+    s.SetMkDir(mkDir);
 
     // パスが空のまま（自動検出）だった場合、表示値が自動検出結果と一致するなら
     // 空文字列を保存して次回も自動検出が機能するようにする。

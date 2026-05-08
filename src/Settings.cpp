@@ -25,6 +25,10 @@ void Settings::Load() {
     m_rarLevel = _wtoi(buf);
     if (m_rarLevel < 0 || m_rarLevel > 5) m_rarLevel = 3;
 
+    GetPrivateProfileStringW(L"General", L"MkDir", L"2", buf, 16, m_iniPath);
+    m_mkDir = _wtoi(buf);
+    if (m_mkDir < 0 || m_mkDir > 3) m_mkDir = 2;
+
     // Advanced compress options
     m_advDictSize   = ReadStr(L"AdvancedCompress", L"DictSize",   L"");
     m_advWordSize   = ReadStr(L"AdvancedCompress", L"WordSize",   L"");
@@ -80,6 +84,9 @@ void Settings::Save() const {
 
     _itow_s(m_rarLevel, buf, 10);
     WriteStr(L"General", L"RarLevel", buf);
+
+    _itow_s(m_mkDir, buf, 10);
+    WriteStr(L"General", L"MkDir", buf);
 
     // Advanced compress options
     WriteStr(L"AdvancedCompress", L"DictSize",   m_advDictSize.c_str());

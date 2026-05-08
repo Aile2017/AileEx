@@ -25,6 +25,11 @@ public:
     int  GetCompressionLevel() const                { return m_compressionLevel; }
     void SetCompressionLevel(int v)                 { m_compressionLevel = v; }
 
+    // 展開時のサブフォルダ作成ポリシー
+    // 0=作成しない / 1=単一ファイル時のみ / 2=複数エントリ時（既定）/ 3=常に作成
+    int  GetMkDir() const                           { return m_mkDir; }
+    void SetMkDir(int v)                            { m_mkDir = v; }
+
     int  GetRarLevel() const                        { return m_rarLevel; }
     void SetRarLevel(int v)                         { m_rarLevel = v; }
 
@@ -91,6 +96,7 @@ private:
     std::wstring m_defaultFormat   = L"7z";
     int          m_compressionLevel = 5;
     int          m_rarLevel         = 3;
+    int          m_mkDir            = 2;   // デフォルト: 複数エントリ時にサブフォルダ作成
     std::wstring m_advDictSize;
     std::wstring m_advWordSize;
     std::wstring m_advSolidBlock;

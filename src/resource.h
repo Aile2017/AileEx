@@ -66,6 +66,11 @@
 #define IDC_BROWSE_UNRAR    3007
 #define IDC_RAR_EXE_PATH    3008
 #define IDC_BROWSE_RAR      3009
+// 展開サブフォルダ作成ポリシー (0=しない / 1=単一ファイル時 / 2=複数時 / 3=常に)
+#define IDC_MKDIR_0         3010
+#define IDC_MKDIR_1         3011
+#define IDC_MKDIR_2         3012
+#define IDC_MKDIR_3         3013
 
 // Info dialog controls
 #define IDC_INFO_LIST       5001

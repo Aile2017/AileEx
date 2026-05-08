@@ -37,7 +37,62 @@ void ForceForeground(HWND hwnd) {
     SetFocus(hwnd);
     if (attach) AttachThreadInput(myTid, fgTid, FALSE);
 }
+
+// アーカイブの m_items からトップレベルエントリ数（一意な第 1 パスコンポーネント数）を返す
+int CountTopLevelEntries(const std::vector<ArchiveItem>& items) {
+    std::set<std::wstring> tops;
+    for (const auto& item : items) {
+        if (item.path.empty()) continue;
+        auto slash = item.path.find(L'/');
+        tops.insert(slash != std::wstring::npos ? item.path.substr(0, slash) : item.path);
+    }
+    return (int)tops.size();
 }
+
+// アーカイブパスからサブフォルダ名を生成（複合拡張子を除去: archive.tar.gz → archive）
+std::wstring ArchiveBaseName(const std::wstring& archivePath) {
+    static const wchar_t* kExts[] = {
+        L".7z", L".zip", L".rar", L".tar", L".gz", L".bz2", L".xz",
+        L".cab", L".iso", L".jar", L".wim", L".lzh", L".lzma", L".arj",
+        L".zst", L".lz4", L".lz5", L".br", L".liz", nullptr
+    };
+    std::wstring name = PathFindFileNameW(archivePath.c_str());
+    bool stripped = true;
+    while (stripped) {
+        stripped = false;
+        for (int i = 0; kExts[i]; ++i) {
+            size_t elen = wcslen(kExts[i]);
+            if (name.size() <= elen) continue;
+            std::wstring tail = name.substr(name.size() - elen);
+            for (auto& c : tail) c = (wchar_t)towlower(c);
+            if (tail == kExts[i]) {
+                name = name.substr(0, name.size() - elen);
+                stripped = true;
+                break;
+            }
+        }
+    }
+    return name.empty() ? L"archive" : name;
+}
+
+// MkDir ポリシーに基づいてサブフォルダを作成すべきか判定する
+// mkDir: 0=しない / 1=単一ファイル時のみ / 2=複数エントリ時 / 3=常に
+bool ShouldCreateSubfolder(int mkDir, const std::vector<ArchiveItem>& items) {
+    if (mkDir == 0) return false;
+    if (mkDir == 3) return true;
+    int topCount = CountTopLevelEntries(items);
+    if (mkDir == 2) return topCount >= 2;
+    // mkDir == 1: トップレベルが単一エントリかつそれがファイル（ディレクトリでない）のとき
+    if (topCount != 1) return false;
+    // 単一トップレベルがディレクトリであれば、アーカイブ自身がフォルダ構造を持つので不要
+    for (const auto& item : items) {
+        if (item.isDir && item.path.find(L'/') == std::wstring::npos)
+            return false; // トップレベルディレクトリがある
+    }
+    return true;
+}
+
+} // namespace
 
 bool MainWindow::RegisterClass(HINSTANCE hInst) {
     WNDCLASSEXW wc  = {};
@@ -821,6 +876,15 @@ void MainWindow::OnExtract() {
     }
     if (!destDir[0]) return;
 
+    // MkDir ポリシーに基づいて実際の展開先を決定
+    std::wstring finalDest = destDir;
+    {
+        int mkDir = App::Instance().GetSettings().GetMkDir();
+        if (ShouldCreateSubfolder(mkDir, m_items)) {
+            finalDest = std::wstring(destDir) + L"\\" + ArchiveBaseName(m_archivePath);
+        }
+    }
+
     // Collect selected indices (empty = all; ignored by unrar path)
     std::vector<UINT32> indices;
     int item = -1;
@@ -843,13 +907,15 @@ void MainWindow::OnExtract() {
 
     if (useUnrar) {
         auto& unrar = app.GetUnrar();
-        m_worker.Start([&unrar, archivePath, destDir = std::wstring(destDir), sink]() -> HRESULT {
+        m_worker.Start([&unrar, archivePath, destDir = finalDest, sink]() -> HRESULT {
+            // unrar.dll は展開先が存在しない場合に失敗するので事前に作成する
+            SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
             bool ok = unrar.ExtractArchive(archivePath.c_str(), destDir.c_str(), nullptr, sink);
             return ok ? S_OK : E_FAIL;
         }, m_hwnd, WM_APP_DONE);
     } else {
         auto& sz = app.Get7z();
-        m_worker.Start([&sz, archivePath, indices, destDir = std::wstring(destDir), sink]() -> HRESULT {
+        m_worker.Start([&sz, archivePath, indices, destDir = finalDest, sink]() -> HRESULT {
             return sz.Extract(archivePath.c_str(), indices, destDir.c_str(),
                               nullptr, sink);
         }, m_hwnd, WM_APP_DONE);
