@@ -12,20 +12,23 @@ AileEx/
 │   ├── build.md
 │   └── known-issues.md
 ├── src/
-│   ├── main.cpp             — wWinMain、引数解析、モード振り分け
-│   ├── App.h/.cpp           — シングルトン、DLL ロード管理、メッセージループ
-│   ├── MainWindow.h/.cpp    — ブラウズウィンドウ（TreeView + ListView）
-│   ├── CompressDlg.h/.cpp   — 圧縮設定ダイアログ
-│   ├── ProgressDlg.h/.cpp   — モーダル進捗ダイアログ
-│   ├── SettingsDlg.h/.cpp   — 設定ダイアログ
-│   ├── InfoDlg.h/.cpp       — エントリ詳細表示ダイアログ
-│   ├── Settings.h/.cpp      — INI 読み書き
-│   ├── SevenZip.h/.cpp      — 7z.dll ラッパー (IIn/IOutArchive + コールバック + Find7zDll)
-│   ├── UnrarDll.h/.cpp      — unrar.dll C API ラッパー
-│   ├── RarProcess.h/.cpp    — WinRAR.exe (GUI) / Rar.exe (console) サブプロセス
-│   ├── ArchiveItem.h        — アーカイブエントリ POD 構造体
-│   ├── WorkerThread.h/.cpp  — ワーカースレッド + ProgressPostSink
-│   └── resource.h           — リソース ID, WM_APP_* 定数
+│   ├── main.cpp                   — wWinMain、引数解析、モード振り分け
+│   ├── App.h/.cpp                 — シングルトン、DLL ロード管理、メッセージループ
+│   ├── MainWindow.h/.cpp          — ブラウズウィンドウ（メニュー + ツールバー + TreeView + ListView + ステータスバー）
+│   ├── CompressDlg.h/.cpp         — 圧縮設定ダイアログ
+│   ├── AdvancedCompressDlg.h/.cpp — 7z/ZIP 詳細圧縮オプション (dict/word/solid/threads/extra)
+│   ├── RarAdvancedDlg.h/.cpp      — RAR 詳細圧縮オプション (recovery/volume 等)
+│   ├── CompressHelper.h/.cpp      — RAR 圧縮の単一エントリポイント (`RunRarCompressSync`)
+│   ├── ProgressDlg.h/.cpp         — モーダル進捗ダイアログ
+│   ├── SettingsDlg.h/.cpp         — 設定ダイアログ
+│   ├── InfoDlg.h/.cpp             — エントリ詳細表示ダイアログ
+│   ├── Settings.h/.cpp            — INI 読み書き、MRU 管理
+│   ├── SevenZip.h/.cpp            — 7z.dll ラッパー (IIn/IOutArchive + DeleteItems + コールバック + Find7zDll)
+│   ├── UnrarDll.h/.cpp            — unrar.dll C API ラッパー
+│   ├── RarProcess.h/.cpp          — WinRAR.exe (GUI) / Rar.exe (console) サブプロセス (Compress / Delete)
+│   ├── ArchiveItem.h              — アーカイブエントリ POD 構造体
+│   ├── WorkerThread.h/.cpp        — ワーカースレッド + IExtractProgressSink + ProgressPostSink
+│   └── resource.h                 — リソース ID, WM_APP_* 定数
 ├── res/
 │   ├── AileEx.rc            — ダイアログテンプレート, アクセラレータ, マニフェスト埋込
 │   ├── AileEx.ico           — アプリケーションアイコン
@@ -49,33 +52,54 @@ AileEx/
                     └──────┬──────┘
                            │
                   ┌────────▼─────────┐
-                  │      App         │←─ Settings (INI 読み書き)
+                  │      App         │←─ Settings (INI 読み書き、MRU)
                   │ (シングルトン)    │←─ SevenZip (7z.dll ラッパー)
                   │                  │←─ UnrarDll (unrar.dll ラッパー)
                   └────────┬─────────┘
                            │
               ┌────────────┴────────────┐
               ▼                         ▼
-       ┌─────────────┐          ┌──────────────┐
-       │ MainWindow   │          │ CompressDlg  │
-       │ (Browse)     │          │ (圧縮設定)    │
-       └──────┬──────┘          └──────┬───────┘
-              │                          │
-       ┌──────┴──────┬─────────┐         ▼
-       ▼             ▼         ▼  ┌──────────────┐
-   ┌──────────┐ ┌─────────┐ ┌────┐│ RarProcess   │
-   │ProgressDlg│ │SettingsDlg│ │InfoDlg│ (WinRAR/Rar) │
-   └────┬─────┘ └─────────┘ └────┘└──────────────┘
-        │
-        ▼
-   ┌─────────────┐
-   │ WorkerThread│
-   │ + Sink      │
-   └──────┬──────┘
-          │
-          ▼
-   PostMessage WM_APP_PROGRESS / WM_APP_DONE
+       ┌─────────────┐          ┌──────────────┐    ┌──────────────────────┐
+       │ MainWindow   │─────────▶│ CompressDlg  │───▶│ AdvancedCompressDlg  │
+       │ (Browse)     │          │ (圧縮設定)    │    │ RarAdvancedDlg       │
+       │ + メニュー    │          └──────┬───────┘    └──────────────────────┘
+       │ + ツールバー  │                  │
+       │ + TreeView   │                  ▼
+       │ + ListView   │           ┌──────────────────┐
+       │ + Status     │           │ CompressHelper   │
+       └──────┬──────┘            │ (RAR 圧縮集約)    │
+              │                    └────────┬─────────┘
+       ┌──────┼──────┬──────────┬────────┐  │
+       ▼      ▼      ▼          ▼        ▼  ▼
+  ┌─────────┐┌─────────┐┌────────┐┌────────┐┌─────────────┐
+  │ProgressDlg│SettingsDlg││InfoDlg │PassDlg ││ RarProcess   │
+  │ + Cancel │└─────────┘└────────┘└────────┘│ (WinRAR/Rar) │
+  └────┬─────┘                                │ Compress     │
+       │                                      │ Delete       │
+       ▼                                      └──────────────┘
+  ┌─────────────────────────────┐
+  │ WorkerThread                │
+  │ + IExtractProgressSink      │
+  │ + ProgressPostSink          │
+  └──────┬──────────────────────┘
+         │
+         ▼
+  PostMessage WM_APP_PROGRESS / WM_APP_DONE
 ```
+
+## ダイアログ一覧
+
+| リソース ID | クラス / 用途 |
+|---|---|
+| `IDD_COMPRESS` | `CompressDlg` — 圧縮設定 |
+| `IDD_COMPRESS_ADV` | `AdvancedCompressDlg` — 7z/ZIP 詳細圧縮オプション |
+| `IDD_RAR_COMPRESS_ADV` | `RarAdvancedDlg` — RAR 詳細圧縮オプション |
+| `IDD_PROGRESS` | `ProgressDlg` — モーダル進捗 |
+| `IDD_SETTINGS` | `SettingsDlg` — 設定 |
+| `IDD_INFO` | `InfoDlg` — エントリ詳細 |
+| `IDD_PASSWORD` | パスワード入力（暗号化アーカイブのオープン時に自動表示）|
+| `IDD_ABOUT` | バージョン情報 |
+| `IDR_MAIN_MENU` | メインウィンドウのメニューバー |
 
 ## スレッドモデル
 
@@ -116,6 +140,10 @@ PostMessageW(hwnd, WM_APP_DONE, hr, 0) ──→
 - 拡張子から CLSID を判定 → `CreateInArchive` でハンドラ取得
 - `archive->Open()` で開く
 - `.rar` で `S_FALSE` の場合は RAR4 (CLSID byte `0x03`) にフォールバック
+
+`MainWindow::OpenArchive` の続き:
+- 全バックエンドが失敗した場合、暗号化ヘッダの可能性があるため `PromptPassword()` でパスワードダイアログを表示し、入力されたパスワードで `SevenZip::OpenArchive` を再試行
+- 成功したらアーカイブパスを正規化 (`GetFullPathNameW`) して `Settings::AddMru` に登録、`RebuildMruMenu()` でメニュー再構築
 
 ## 設定ダイアログ
 
