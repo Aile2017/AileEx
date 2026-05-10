@@ -1,5 +1,9 @@
 # AileEx — Copilot Instructions
 
+## Communication Language
+
+**Always respond in Japanese** when conversing with the user. This project owner prefers Japanese for all interactions.
+
 ## Project Overview
 
 A Windows archive manager GUI with 7z.dll as the backend. C++17 + Win32 API.
