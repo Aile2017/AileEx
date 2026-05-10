@@ -1,5 +1,7 @@
 #include "SettingsDlg.h"
 #include "App.h"
+#include "DialogUtils.h"
+#include "I18n.h"
 #include "resource.h"
 #include "SevenZip.h"
 #include "UnrarDll.h"
@@ -16,15 +18,7 @@ void SettingsDlg::Show(HWND hwndParent) {
 }
 
 INT_PTR CALLBACK SettingsDlg::DlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
-    SettingsDlg* self = nullptr;
-    if (msg == WM_INITDIALOG) {
-        self = reinterpret_cast<SettingsDlg*>(lp);
-        SetWindowLongPtrW(hwnd, DWLP_USER, (LONG_PTR)self);
-    } else {
-        self = reinterpret_cast<SettingsDlg*>(GetWindowLongPtrW(hwnd, DWLP_USER));
-    }
-    if (self) return self->HandleMsg(hwnd, msg, wp, lp);
-    return FALSE;
+    return StandardDlgProc<SettingsDlg>(hwnd, msg, wp, lp);
 }
 
 INT_PTR SettingsDlg::HandleMsg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -39,51 +33,15 @@ INT_PTR SettingsDlg::HandleMsg(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case IDC_BROWSE_DIR:
             OnBrowseDir(hwnd);
             break;
-        case IDC_BROWSE_RAR: {
-            wchar_t path[MAX_PATH] = {};
-            GetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH, path, MAX_PATH);
-            OPENFILENAMEW ofn = {};
-            ofn.lStructSize = sizeof(ofn);
-            ofn.hwndOwner   = hwnd;
-            ofn.lpstrFilter = L"実行ファイル\0*.exe\0";
-            ofn.lpstrFile   = path;
-            ofn.nMaxFile    = MAX_PATH;
-            ofn.Flags       = OFN_FILEMUSTEXIST;
-            ofn.lpstrTitle  = L"WinRAR.exe / Rar.exe を選択";
-            if (GetOpenFileNameW(&ofn))
-                SetDlgItemTextW(hwnd, IDC_RAR_EXE_PATH, path);
+        case IDC_BROWSE_RAR:
+            OnBrowseFile(hwnd, IDC_RAR_EXE_PATH, IDS_FILTER_EXE, IDS_TITLE_SELECT_RAR);
             break;
-        }
-        case IDC_BROWSE_7Z: {
-            wchar_t path[MAX_PATH] = {};
-            GetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH, path, MAX_PATH);
-            OPENFILENAMEW ofn = {};
-            ofn.lStructSize = sizeof(ofn);
-            ofn.hwndOwner   = hwnd;
-            ofn.lpstrFilter = L"DLL ファイル\0*.dll\0";
-            ofn.lpstrFile   = path;
-            ofn.nMaxFile    = MAX_PATH;
-            ofn.Flags       = OFN_FILEMUSTEXIST;
-            ofn.lpstrTitle  = L"7z.dll を選択";
-            if (GetOpenFileNameW(&ofn))
-                SetDlgItemTextW(hwnd, IDC_7Z_DLL_PATH, path);
+        case IDC_BROWSE_7Z:
+            OnBrowseFile(hwnd, IDC_7Z_DLL_PATH, IDS_FILTER_DLL, IDS_TITLE_SELECT_7Z_DLL);
             break;
-        }
-        case IDC_BROWSE_UNRAR: {
-            wchar_t path[MAX_PATH] = {};
-            GetDlgItemTextW(hwnd, IDC_UNRAR_DLL_PATH, path, MAX_PATH);
-            OPENFILENAMEW ofn = {};
-            ofn.lStructSize = sizeof(ofn);
-            ofn.hwndOwner   = hwnd;
-            ofn.lpstrFilter = L"DLL ファイル\0*.dll\0";
-            ofn.lpstrFile   = path;
-            ofn.nMaxFile    = MAX_PATH;
-            ofn.Flags       = OFN_FILEMUSTEXIST;
-            ofn.lpstrTitle  = L"unrar.dll を選択";
-            if (GetOpenFileNameW(&ofn))
-                SetDlgItemTextW(hwnd, IDC_UNRAR_DLL_PATH, path);
+        case IDC_BROWSE_UNRAR:
+            OnBrowseFile(hwnd, IDC_UNRAR_DLL_PATH, IDS_FILTER_DLL, IDS_TITLE_SELECT_UNRAR_DLL);
             break;
-        }
         case IDOK:
             if (OnOK(hwnd)) EndDialog(hwnd, IDOK);
             break;
@@ -133,39 +91,15 @@ void SettingsDlg::OnInit(HWND hwnd) {
 void SettingsDlg::OnBrowseDir(HWND hwnd) {
     wchar_t path[MAX_PATH] = {};
     GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, path, MAX_PATH);
+    if (BrowseFolderDialog(hwnd, IDS_TITLE_SELECT_DEFAULT_DIR, path, MAX_PATH))
+        SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, path);
+}
 
-    {
-        IFileOpenDialog* pfd = nullptr;
-        if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                       IID_PPV_ARGS(&pfd)))) {
-            FILEOPENDIALOGOPTIONS opts = 0;
-            pfd->GetOptions(&opts);
-            pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-            pfd->SetTitle(L"デフォルト出力先を選択");
-            // 現在の入力値を初期フォルダとして設定
-            if (path[0]) {
-                IShellItem* psi = nullptr;
-                if (SUCCEEDED(SHCreateItemFromParsingName(path, nullptr, IID_PPV_ARGS(&psi)))) {
-                    pfd->SetFolder(psi);
-                    psi->Release();
-                }
-            }
-            if (SUCCEEDED(pfd->Show(hwnd))) {
-                IShellItem* psi = nullptr;
-                if (SUCCEEDED(pfd->GetResult(&psi))) {
-                    PWSTR psz = nullptr;
-                    psi->GetDisplayName(SIGDN_FILESYSPATH, &psz);
-                    if (psz) {
-                        wcsncpy_s(path, psz, MAX_PATH - 1);
-                        CoTaskMemFree(psz);
-                        SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, path);
-                    }
-                    psi->Release();
-                }
-            }
-            pfd->Release();
-        }
-    }
+void SettingsDlg::OnBrowseFile(HWND hwnd, int pathCtrlId, UINT filterId, UINT titleId) {
+    wchar_t path[MAX_PATH] = {};
+    GetDlgItemTextW(hwnd, pathCtrlId, path, MAX_PATH);
+    if (BrowseForFile(hwnd, titleId, filterId, OFN_FILEMUSTEXIST, path, MAX_PATH))
+        SetDlgItemTextW(hwnd, pathCtrlId, path);
 }
 
 bool SettingsDlg::OnOK(HWND hwnd) {

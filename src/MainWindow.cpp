@@ -2,7 +2,11 @@
 #include "App.h"
 #include "CompressDlg.h"
 #include "CompressHelper.h"
+#include "CommentDlg.h"
+#include "DialogUtils.h"
+#include "I18n.h"
 #include "InfoDlg.h"
+#include "PropertiesDlg.h"
 #include "ProgressDlg.h"
 #include "RarProcess.h"
 #include "SettingsDlg.h"
@@ -21,10 +25,9 @@
 #pragma comment(lib, "version.lib")
 
 namespace {
-// ランチャー経由起動などで親プロセスが既に終了しているケース向けの
-// フォアグラウンド奪取。SetForegroundWindow 単独では制限で降格されるので、
-// フォアグラウンドアプリのスレッドにアタッチした上で TopMost を一瞬付けて
-// Z オーダーを押し出してから呼ぶ。
+// Force foreground for cases like launcher-spawned processes where parent already exited.
+// SetForegroundWindow alone is restricted and demoted, so attach to foreground app's thread,
+// apply TopMost briefly to push Z-order, then call.
 void ForceForeground(HWND hwnd) {
     HWND  fg    = GetForegroundWindow();
     DWORD fgTid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
@@ -39,7 +42,7 @@ void ForceForeground(HWND hwnd) {
     if (attach) AttachThreadInput(myTid, fgTid, FALSE);
 }
 
-// アーカイブの m_items からトップレベルエントリ数（一意な第 1 パスコンポーネント数）を返す
+// Return top-level entry count from archive m_items (unique first path components)
 int CountTopLevelEntries(const std::vector<ArchiveItem>& items) {
     std::set<std::wstring> tops;
     for (const auto& item : items) {
@@ -50,8 +53,8 @@ int CountTopLevelEntries(const std::vector<ArchiveItem>& items) {
     return (int)tops.size();
 }
 
-// アーカイブパスからサブフォルダ名を生成（複合拡張子を除去: archive.tar.gz → archive,
-// archive.7z.001 → archive）
+// Generate subfolder name from archive path (strip compound extensions: archive.tar.gz → archive,
+// archive.7z.001 → archive)
 std::wstring ArchiveBaseName(const std::wstring& archivePath) {
     static const wchar_t* kExts[] = {
         L".7z", L".zip", L".rar", L".tar", L".gz", L".bz2", L".xz",
@@ -62,7 +65,7 @@ std::wstring ArchiveBaseName(const std::wstring& archivePath) {
     bool stripped = true;
     while (stripped) {
         stripped = false;
-        // 全数字の末尾拡張子 (.001 等) を剥がす
+        // Strip all-digit trailing extensions (.001 etc.)
         auto dot = name.rfind(L'.');
         if (dot != std::wstring::npos && dot + 1 < name.size()) {
             bool allDigits = true;
@@ -89,19 +92,19 @@ std::wstring ArchiveBaseName(const std::wstring& archivePath) {
     return name.empty() ? L"archive" : name;
 }
 
-// MkDir ポリシーに基づいてサブフォルダを作成すべきか判定する
-// mkDir: 0=しない / 1=単一ファイル時のみ / 2=複数エントリ時 / 3=常に
+// Determine if subfolder should be created based on MkDir policy
+// mkDir: 0=no / 1=single file only / 2=multiple entries / 3=always
 bool ShouldCreateSubfolder(int mkDir, const std::vector<ArchiveItem>& items) {
     if (mkDir == 0) return false;
     if (mkDir == 3) return true;
     int topCount = CountTopLevelEntries(items);
     if (mkDir == 2) return topCount >= 2;
-    // mkDir == 1: トップレベルが単一エントリかつそれがファイル（ディレクトリでない）のとき
+    // mkDir == 1: single top-level entry that is a file (not directory)
     if (topCount != 1) return false;
-    // 単一トップレベルがディレクトリであれば、アーカイブ自身がフォルダ構造を持つので不要
+    // If single top-level is directory, archive has folder structure, so not needed
     for (const auto& item : items) {
         if (item.isDir && item.path.find(L'/') == std::wstring::npos)
-            return false; // トップレベルディレクトリがある
+            return false; // Top-level directory exists
     }
     return true;
 }
@@ -150,7 +153,7 @@ bool MainWindow::Create(HINSTANCE hInst, int nCmdShow) {
 }
 
 void MainWindow::OpenArchive(const wchar_t* path) {
-    // 既に開いていた split アンラップの一時ファイルを削除（差替え時のリーク防止）
+    // Delete previously unwrapped split temp file (prevent leak on replace)
     if (!m_effectiveArchivePath.empty() &&
         _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
         DeleteFileW(m_effectiveArchivePath.c_str());
@@ -197,7 +200,7 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         }
     }
 
-    // 7z Open 失敗時：暗号化ヘッダの可能性があるためパスワードを促してリトライ
+    // On 7z open failure: may be encrypted header, prompt for password and retry
     if (FAILED(hr) && !m_openedWithUnrar && app.Get7z().IsLoaded()) {
         std::wstring pw = PromptPassword();
         if (!pw.empty()) {
@@ -206,23 +209,23 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         }
     }
 
-    // split 自動アンラップを検出 → read-only として扱う
+    // Detect split auto-unwrap → treat as read-only
     if (SUCCEEDED(hr) &&
         _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
         m_isReadOnly = true;
     }
 
     if (FAILED(hr)) {
-        std::wstring msg = L"アーカイブを開けませんでした。";
+        std::wstring msg = I18n::Tr(IDS_ERR_OPEN_ARCHIVE);
         if (!app.Get7z().IsLoaded() && !app.GetUnrar().IsLoaded())
-            msg += L"\n7z.dll / unrar.dll が読み込まれていません。";
+            msg += I18n::Tr(IDS_ERR_OPEN_ARCHIVE_7Z_UNRAR);
         else if (!app.Get7z().IsLoaded())
-            msg += L"\n7z.dll が読み込まれていません。";
+            msg += I18n::Tr(IDS_ERR_OPEN_ARCHIVE_7Z);
         ShowError(msg.c_str(), hr);
         return;
     }
 
-    // MRU 更新 — 相対パスや混在ケース ("../" 等) は GetFullPathNameW で正規化。
+    // Update MRU — normalize relative paths and mixed cases ("../" etc.) via GetFullPathNameW.
     {
         wchar_t full[MAX_PATH] = {};
         if (GetFullPathNameW(path, MAX_PATH, full, nullptr) == 0)
@@ -243,9 +246,9 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         const std::wstring& dllName = m_openedWithUnrar
             ? app.GetUnrar().GetLoadedName()
             : app.Get7z().GetLoadedName();
-        wchar_t status[512];
-        swprintf_s(status, L"%zu 個のエントリ  [%s]", m_items.size(), dllName.c_str());
-        SetWindowTextW(m_hStatus, status);
+        std::wstring status = I18n::TrFmt(IDS_FMT_STATUS_ENTRIES,
+                                          m_items.size(), dllName.c_str());
+        SetWindowTextW(m_hStatus, status.c_str());
     }
 
     PopulateTree();
@@ -320,13 +323,19 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
         }
         if (hdr->code == TTN_GETDISPINFOW) {
             auto* pdi = reinterpret_cast<NMTTDISPINFOW*>(lp);
+            UINT id = 0;
             switch (pdi->hdr.idFrom) {
-            case ID_EXTRACT:      pdi->lpszText = L"展開"; break;
-            case ID_OPEN_ASSOC:   pdi->lpszText = L"閲覧"; break;
-            case ID_ADD:          pdi->lpszText = L"追加"; break;
-            case ID_INFO:         pdi->lpszText = L"情報"; break;
-            case ID_TEST:         pdi->lpszText = L"テスト"; break;
-            case ID_SETTINGS_DLG: pdi->lpszText = L"設定"; break;
+            case ID_EXTRACT:      id = IDS_TIP_EXTRACT;  break;
+            case ID_OPEN_ASSOC:   id = IDS_TIP_VIEW;     break;
+            case ID_ADD:          id = IDS_TIP_ADD;      break;
+            case ID_INFO:         id = IDS_TIP_INFO;     break;
+            case ID_TEST:         id = IDS_TIP_TEST;     break;
+            case ID_SETTINGS_DLG: id = IDS_TIP_SETTINGS; break;
+            }
+            if (id) {
+                std::wstring s = I18n::Tr(id);
+                wcsncpy_s(pdi->szText, s.c_str(), _countof(pdi->szText) - 1);
+                pdi->lpszText = pdi->szText;
             }
         }
         return 0;
@@ -443,12 +452,33 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
 
 // ---- Control creation ----
 
+// Forward WM_DROPFILES from child (ListView/TreeView) to parent.
+// Without this, ListView drops are ignored (even though parent does DragAcceptFiles,
+// child controls don't receive the message).
+static LRESULT CALLBACK ChildDropForwardProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
+                                              UINT_PTR /*uIdSubclass*/, DWORD_PTR /*dwRefData*/) {
+    if (msg == WM_DROPFILES) {
+        // Parent handles DragFinish, so child does nothing.
+        SendMessageW(GetParent(hwnd), WM_DROPFILES, wp, lp);
+        return 0;
+    }
+    return DefSubclassProc(hwnd, msg, wp, lp);
+}
+
 void MainWindow::OnCreate(HWND hwnd) {
     CreateControls(hwnd);
     DragAcceptFiles(hwnd, TRUE);
+    if (m_hListView) {
+        DragAcceptFiles(m_hListView, TRUE);
+        SetWindowSubclass(m_hListView, ChildDropForwardProc, 1, 0);
+    }
+    if (m_hTreeView) {
+        DragAcceptFiles(m_hTreeView, TRUE);
+        SetWindowSubclass(m_hTreeView, ChildDropForwardProc, 1, 0);
+    }
 
-    // 最近使ったアーカイブのサブメニューハンドルを探してキャッシュ。
-    // 一度キャッシュすれば中身を再構築しても HMENU 自体は有効。
+    // Find and cache MRU submenu handle.
+    // Once cached, rebuilding contents keeps HMENU itself valid.
     if (HMENU hMenuBar = GetMenu(hwnd)) {
         int topCount = GetMenuItemCount(hMenuBar);
         for (int i = 0; i < topCount && !m_hMruMenu; ++i) {
@@ -517,7 +547,7 @@ void MainWindow::CreateControls(HWND hwnd) {
     SendMessageW(m_hToolbar, TB_ADDBUTTONS, _countof(btns), (LPARAM)btns);
     SendMessageW(m_hToolbar, TB_AUTOSIZE, 0, 0);
 
-    // 設定で非表示なら起動直後に隠す
+    // Hide immediately at startup if hidden in settings
     if (!m_toolbarVisible)
         ShowWindow(m_hToolbar, SW_HIDE);
 
@@ -542,20 +572,21 @@ void MainWindow::CreateControls(HWND hwnd) {
         LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_HEADERDRAGDROP);
 
     // ListView columns
-    struct ColDef { const wchar_t* name; int width; };
-    ColDef cols[] = {
-        {L"名前",     220},
-        {L"サイズ",   90},
-        {L"圧縮後",   90},
-        {L"種類",     80},
-        {L"更新日時", 140},
+    struct ColDef { UINT nameId; int width; };
+    const ColDef cols[] = {
+        {IDS_COL_NAME,     220},
+        {IDS_COL_SIZE,     90},
+        {IDS_COL_PACKED,   90},
+        {IDS_COL_TYPE,     80},
+        {IDS_COL_MODIFIED, 140},
     };
     for (int i = 0; i < (int)_countof(cols); ++i) {
+        std::wstring name = I18n::Tr(cols[i].nameId);
         LVCOLUMNW lvc = {};
         lvc.mask    = LVCF_TEXT | LVCF_WIDTH | LVCF_FMT;
         lvc.fmt     = (i == 0) ? LVCFMT_LEFT : LVCFMT_RIGHT;
         lvc.cx      = cols[i].width;
-        lvc.pszText = const_cast<wchar_t*>(cols[i].name);
+        lvc.pszText = name.data();
         ListView_InsertColumn(m_hListView, i, &lvc);
     }
 
@@ -601,7 +632,7 @@ void MainWindow::ResizePanes(int cx, int cy) {
         int lvX = m_treeWidth + kSplitterW;
         SetWindowPos(m_hListView, nullptr, lvX, contentTop, cx - lvX, contentH, SWP_NOZORDER);
     } else {
-        // ツリー非表示時は ListView をフル幅化。ツリー本体は SW_HIDE 済み想定。
+        // When tree is hidden, ListView takes full width. Tree itself assumed SW_HIDE'd.
         SetWindowPos(m_hListView, nullptr, 0, contentTop, cx, contentH, SWP_NOZORDER);
     }
 }
@@ -630,19 +661,50 @@ void MainWindow::OnDropFiles(HDROP hDrop) {
     if (!archives.empty()) {
         OpenArchive(archives[0].c_str()); // open first archive
     } else if (!regular.empty()) {
-        CompressDlg::Params params;
-        params.inputFiles = std::move(regular);
-        params.LoadFromSettings(App::Instance().GetSettings());
+        // If archive currently open and writable, let user choose add vs. create new
+        bool canAdd = !m_archivePath.empty() && !m_isReadOnly;
+        bool addToCurrent = false;
+        if (canAdd) {
+            // Show only 1-2 filenames for specificity
+            std::wstring sample;
+            for (size_t i = 0; i < regular.size() && i < 2; ++i) {
+                auto leaf = regular[i];
+                auto sl = leaf.find_last_of(L"\\/");
+                if (sl != std::wstring::npos) leaf = leaf.substr(sl + 1);
+                sample += L"  " + leaf + L"\n";
+            }
+            if (regular.size() > 2) sample += I18n::Tr(IDS_DND_ELLIPSIS);
 
-        CompressDlg dlg;
-        auto& sz7 = App::Instance().Get7z();
-        const auto* enc = sz7.IsLoaded() ? &sz7.GetEncoderNames() : nullptr;
-        const auto* wf  = sz7.IsLoaded() ? &sz7.GetWritableFormats() : nullptr;
-        if (dlg.Show(m_hwnd, params, enc, wf)) {
-            auto& s = App::Instance().GetSettings();
-            params.SaveToSettings(s);
-            s.Save();
-            OnCompress(params);
+            wchar_t arcLeaf[MAX_PATH];
+            {
+                std::wstring a = m_archivePath;
+                auto sl = a.find_last_of(L"\\/");
+                wcscpy_s(arcLeaf, (sl != std::wstring::npos) ? a.substr(sl + 1).c_str() : a.c_str());
+            }
+            std::wstring msg = I18n::TrFmt(IDS_FMT_DND_PROMPT, sample.c_str(), arcLeaf);
+            int r = MessageBoxW(m_hwnd, msg.c_str(), I18n::Tr(IDS_APP_TITLE).c_str(),
+                                MB_YESNOCANCEL | MB_ICONQUESTION | MB_DEFBUTTON1);
+            if (r == IDCANCEL) return;
+            addToCurrent = (r == IDYES);
+        }
+
+        if (addToCurrent) {
+            AddFilesToCurrentArchive(std::move(regular));
+        } else {
+            CompressDlg::Params params;
+            params.inputFiles = std::move(regular);
+            params.LoadFromSettings(App::Instance().GetSettings());
+
+            CompressDlg dlg;
+            auto& sz7 = App::Instance().Get7z();
+            const auto* enc = sz7.IsLoaded() ? &sz7.GetEncoderNames() : nullptr;
+            const auto* wf  = sz7.IsLoaded() ? &sz7.GetWritableFormats() : nullptr;
+            if (dlg.Show(m_hwnd, params, enc, wf)) {
+                auto& s = App::Instance().GetSettings();
+                params.SaveToSettings(s);
+                s.Save();
+                OnCompress(params);
+            }
         }
     }
 }
@@ -663,11 +725,17 @@ void MainWindow::OnCommand(WORD id) {
     case ID_ADD:
         OnAddFiles();
         break;
+    case ID_ADD_TO_CURRENT:
+        OnAddFilesToCurrentArchive();
+        break;
     case ID_TEST:
         OnTest();
         break;
     case ID_INFO:
         OnInfo();
+        break;
+    case ID_ARCHIVE_COMMENT:
+        OnArchiveComment();
         break;
     case ID_DELETE:
         OnDelete();
@@ -682,6 +750,9 @@ void MainWindow::OnCommand(WORD id) {
         break;
     case IDM_FILE_OPEN:
         OnFileOpen();
+        break;
+    case IDM_FILE_PROPERTIES:
+        OnArchiveProperties();
         break;
     case IDM_FILE_EXIT:
         DestroyWindow(m_hwnd);
@@ -754,7 +825,7 @@ void MainWindow::OnListDblClick() {
         return;
     }
 
-    // フォルダパスインデックスを解決してツリー選択に使うヘルパー
+    // Helper to resolve folder path index and use for tree selection
     auto navigateToFolderIndex = [&](int fpIdx) {
         std::function<HTREEITEM(HTREEITEM)> findItem = [&](HTREEITEM h) -> HTREEITEM {
             while (h) {
@@ -777,7 +848,7 @@ void MainWindow::OnListDblClick() {
     };
 
     if (arcIdx < (UINT32)m_items.size() && m_items[arcIdx].isDir) {
-        // m_items に実エントリがあるフォルダ
+        // Folder with actual entry in m_items
         const std::wstring& targetPath = m_items[arcIdx].path;
         for (int i = 0; i < (int)m_folderPaths.size(); ++i) {
             if (m_folderPaths[i] == targetPath) {
@@ -786,12 +857,12 @@ void MainWindow::OnListDblClick() {
             }
         }
     } else if (arcIdx >= (UINT32)m_items.size()) {
-        // 仮想フォルダ（unrar.dll 等でエントリが省略されたフォルダ）
+        // Virtual folder (entries omitted by unrar.dll etc.)
         int fpIdx = (int)(arcIdx - (UINT32)m_items.size());
         if (fpIdx < (int)m_folderPaths.size())
             navigateToFolderIndex(fpIdx);
     } else {
-        // ファイル → 展開ダイアログを開く
+        // File → open extract dialog
         OnExtract();
     }
 }
@@ -799,23 +870,17 @@ void MainWindow::OnListDblClick() {
 void MainWindow::OnOpenAssoc() {
     if (m_archivePath.empty()) return;
     if (m_openedWithUnrar) {
-        MessageBoxW(m_hwnd,
-            L"閲覧機能は 7z.dll 使用時のみ利用できます。\n"
-            L"設定で RAR 展開エンジンを「7z.dll」に切り替えてください。",
-            L"AileEx", MB_ICONINFORMATION);
+        MessageBoxW(m_hwnd, I18n::Tr(IDS_VIEW_REQUIRES_7Z).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONINFORMATION);
         return;
     }
 
     App& app = App::Instance();
-    if (!app.Get7z().IsLoaded()) {
-        ShowError(L"7z.dll が読み込まれていません。");
-        return;
-    }
-
-    // Get single selected item
+    if (!Ensure7zLoaded()) return;
     int sel = ListView_GetNextItem(m_hListView, -1, LVNI_SELECTED);
     if (sel < 0) {
-        MessageBoxW(m_hwnd, L"ファイルを選択してください。", L"AileEx", MB_ICONINFORMATION);
+        MessageBoxW(m_hwnd, I18n::Tr(IDS_INFO_SELECT_FILE).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONINFORMATION);
         return;
     }
 
@@ -828,8 +893,8 @@ void MainWindow::OnOpenAssoc() {
 
     const ArchiveItem& it = m_items[idx];
     if (it.isDir) {
-        MessageBoxW(m_hwnd, L"フォルダは閲覧できません。ファイルを選択してください。",
-                    L"AileEx", MB_ICONINFORMATION);
+        MessageBoxW(m_hwnd, I18n::Tr(IDS_INFO_FOLDERS_NOT_VIEWABLE).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONINFORMATION);
         return;
     }
 
@@ -849,7 +914,7 @@ void MainWindow::OnOpenAssoc() {
     HRESULT hr = app.Get7z().Extract(m_effectiveArchivePath.c_str(), indices,
                                       tempDir.c_str(), nullptr, nullptr);
     if (FAILED(hr)) {
-        ShowError(L"ファイルの取り出しに失敗しました。", hr);
+        ShowError(I18n::Tr(IDS_ERR_EXTRACT_FILE_FAILED).c_str(), hr);
         return;
     }
 
@@ -863,98 +928,22 @@ void MainWindow::OnOpenAssoc() {
                                   nullptr, nullptr, SW_SHOWNORMAL);
     if ((INT_PTR)hi <= 32) {
         MessageBoxW(m_hwnd,
-            (L"関連付けられたアプリケーションが見つかりませんでした。\n" + localPath).c_str(),
-            L"AileEx", MB_ICONWARNING);
+                    I18n::TrFmt(IDS_FMT_NO_ASSOC_APP, localPath.c_str()).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONWARNING);
     }
 }
 
 void MainWindow::OnExtract() {
     if (m_archivePath.empty()) return;
-
-    App& app = App::Instance();
-    bool useUnrar = m_openedWithUnrar;
-
-    if (!useUnrar && !app.Get7z().IsLoaded()) {
-        ShowError(L"7z.dll が読み込まれていません。");
-        return;
-    }
-
-    // Ask destination folder
-    wchar_t destDir[MAX_PATH] = {};
-    {
-        IFileOpenDialog* pfd = nullptr;
-        if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                       IID_PPV_ARGS(&pfd)))) {
-            FILEOPENDIALOGOPTIONS opts = 0;
-            pfd->GetOptions(&opts);
-            pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-            pfd->SetTitle(L"展開先フォルダを選択してください");
-            if (SUCCEEDED(pfd->Show(m_hwnd))) {
-                IShellItem* psi = nullptr;
-                if (SUCCEEDED(pfd->GetResult(&psi))) {
-                    PWSTR psz = nullptr;
-                    psi->GetDisplayName(SIGDN_FILESYSPATH, &psz);
-                    if (psz) { wcsncpy_s(destDir, psz, MAX_PATH - 1); CoTaskMemFree(psz); }
-                    psi->Release();
-                }
-            }
-            pfd->Release();
-        }
-    }
-    if (!destDir[0]) return;
-
-    // MkDir ポリシーに基づいて実際の展開先を決定
-    std::wstring finalDest = destDir;
-    {
-        int mkDir = App::Instance().GetSettings().GetMkDir();
-        if (ShouldCreateSubfolder(mkDir, m_items)) {
-            finalDest = std::wstring(destDir) + L"\\" + ArchiveBaseName(m_archivePath);
-        }
-    }
-
-    // Collect selected indices (empty = all; ignored by unrar path)
-    std::vector<UINT32> indices; // 空 = 全展開
-
-    ProgressDlg progDlg;
-    progDlg.Show(m_hwnd, L"展開中...");
-
-    auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
-    m_pSink    = sink;
-    progDlg.SetSink(sink);
-
-    auto archivePath = m_effectiveArchivePath;
-
-    if (useUnrar) {
-        auto& unrar = app.GetUnrar();
-        m_worker.Start([&unrar, archivePath, destDir = finalDest, sink]() -> HRESULT {
-            // unrar.dll は展開先が存在しない場合に失敗するので事前に作成する
-            SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
-            bool ok = unrar.ExtractArchive(archivePath.c_str(), destDir.c_str(), nullptr, sink);
-            return ok ? S_OK : E_FAIL;
-        }, m_hwnd, WM_APP_DONE);
-    } else {
-        auto& sz = app.Get7z();
-        m_worker.Start([&sz, archivePath, indices, destDir = finalDest, sink]() -> HRESULT {
-            return sz.Extract(archivePath.c_str(), indices, destDir.c_str(),
-                              nullptr, sink);
-        }, m_hwnd, WM_APP_DONE);
-    }
-
-    HRESULT hrDone = progDlg.RunMessageLoop();
-    m_worker.Wait();
-    delete sink;
-    m_pSink = nullptr;
-
-    if (FAILED(hrDone) && hrDone != E_ABORT)
-        ShowError(L"展開に失敗しました。", hrDone);
+    RunExtraction({}, {});
 }
 
 void MainWindow::OnExtractSelected() {
     if (m_archivePath.empty()) return;
 
-    // lParam を実アーカイブインデックスに解決する
-    // - lParam < m_items.size()  : 実エントリ（ディレクトリなら配下も展開）
-    // - lParam >= m_items.size() : 仮想フォルダ（m_folderPaths 配下を展開）
+    // Resolve lParam to real archive index.
+    // - lParam < m_items.size()  : real entry (directory → extract contents too)
+    // - lParam >= m_items.size() : virtual folder (extract m_folderPaths contents)
     std::set<UINT32> indexSet;
     int item = -1;
     while ((item = ListView_GetNextItem(m_hListView, item, LVNI_SELECTED)) != -1) {
@@ -974,7 +963,7 @@ void MainWindow::OnExtractSelected() {
                 folder = m_folderPaths[fpIdx];
         }
         if (!folder.empty()) {
-            std::wstring prefix = folder + L"/";
+            std::wstring prefix = folder + L"\\";
             for (UINT32 j = 0; j < (UINT32)m_items.size(); ++j) {
                 if (m_items[j].path.size() >= prefix.size() &&
                     m_items[j].path.compare(0, prefix.size(), prefix) == 0)
@@ -983,42 +972,28 @@ void MainWindow::OnExtractSelected() {
         }
     }
     if (indexSet.empty()) {
-        MessageBoxW(m_hwnd, L"ファイルが選択されていません。", L"AileEx", MB_ICONINFORMATION);
+        MessageBoxW(m_hwnd, I18n::Tr(IDS_INFO_NO_FILES_SELECTED).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONINFORMATION);
         return;
     }
-    std::vector<UINT32> indices(indexSet.begin(), indexSet.end());
 
+    std::vector<UINT32> indices(indexSet.begin(), indexSet.end());
+    std::set<std::wstring> rarTargetPaths;
+    for (UINT32 idx : indices) rarTargetPaths.insert(m_items[idx].path);
+
+    RunExtraction(std::move(indices), std::move(rarTargetPaths));
+}
+
+void MainWindow::RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths) {
     App& app = App::Instance();
     bool useUnrar = m_openedWithUnrar;
-    if (!useUnrar && !app.Get7z().IsLoaded()) {
-        ShowError(L"7z.dll が読み込まれていません。");
-        return;
-    }
+
+    if (!Ensure7zLoaded(useUnrar)) return;
 
     wchar_t destDir[MAX_PATH] = {};
-    {
-        IFileOpenDialog* pfd = nullptr;
-        if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
-                                       IID_PPV_ARGS(&pfd)))) {
-            FILEOPENDIALOGOPTIONS opts = 0;
-            pfd->GetOptions(&opts);
-            pfd->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-            pfd->SetTitle(L"展開先フォルダを選択してください");
-            if (SUCCEEDED(pfd->Show(m_hwnd))) {
-                IShellItem* psi = nullptr;
-                if (SUCCEEDED(pfd->GetResult(&psi))) {
-                    PWSTR psz = nullptr;
-                    psi->GetDisplayName(SIGDN_FILESYSPATH, &psz);
-                    if (psz) { wcsncpy_s(destDir, psz, MAX_PATH - 1); CoTaskMemFree(psz); }
-                    psi->Release();
-                }
-            }
-            pfd->Release();
-        }
-    }
-    if (!destDir[0]) return;
+    if (!BrowseFolderDialog(m_hwnd, IDS_TITLE_SELECT_DEST_FOLDER, destDir, MAX_PATH)) return;
 
-    // MkDir ポリシーはアーカイブ全体の構造で評価する（全展開と同じ基準）
+    // Evaluate MkDir policy based on full archive structure
     std::wstring finalDest = destDir;
     {
         int mkDir = app.GetSettings().GetMkDir();
@@ -1027,7 +1002,7 @@ void MainWindow::OnExtractSelected() {
     }
 
     ProgressDlg progDlg;
-    progDlg.Show(m_hwnd, L"展開中...");
+    progDlg.Show(m_hwnd, I18n::Tr(IDS_PROGRESS_EXTRACTING).c_str());
 
     auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
     m_pSink    = sink;
@@ -1036,16 +1011,21 @@ void MainWindow::OnExtractSelected() {
     auto archivePath = m_effectiveArchivePath;
 
     if (useUnrar) {
-        // unrar 経路: 対象パスセットを構築して選択展開
-        std::set<std::wstring> targetPaths;
-        for (UINT32 idx : indices) targetPaths.insert(m_items[idx].path);
         auto& unrar = app.GetUnrar();
-        m_worker.Start([&unrar, archivePath, destDir = finalDest, targetPaths, sink]() -> HRESULT {
-            SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
-            bool ok = unrar.ExtractArchiveSelected(archivePath.c_str(), destDir.c_str(),
-                                                   targetPaths, nullptr, sink);
-            return ok ? S_OK : E_FAIL;
-        }, m_hwnd, WM_APP_DONE);
+        if (rarTargetPaths.empty()) {
+            m_worker.Start([&unrar, archivePath, destDir = finalDest, sink]() -> HRESULT {
+                SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
+                bool ok = unrar.ExtractArchive(archivePath.c_str(), destDir.c_str(), nullptr, sink);
+                return ok ? S_OK : E_FAIL;
+            }, m_hwnd, WM_APP_DONE);
+        } else {
+            m_worker.Start([&unrar, archivePath, destDir = finalDest, rarTargetPaths, sink]() -> HRESULT {
+                SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
+                bool ok = unrar.ExtractArchiveSelected(archivePath.c_str(), destDir.c_str(),
+                                                       rarTargetPaths, nullptr, sink);
+                return ok ? S_OK : E_FAIL;
+            }, m_hwnd, WM_APP_DONE);
+        }
     } else {
         auto& sz = app.Get7z();
         m_worker.Start([&sz, archivePath, indices, destDir = finalDest, sink]() -> HRESULT {
@@ -1059,7 +1039,7 @@ void MainWindow::OnExtractSelected() {
     m_pSink = nullptr;
 
     if (FAILED(hrDone) && hrDone != E_ABORT)
-        ShowError(L"展開に失敗しました。", hrDone);
+        ShowError(I18n::Tr(IDS_ERR_EXTRACT_FAILED).c_str(), hrDone);
 }
 
 void MainWindow::OnContextMenu(HWND /*hwndFrom*/, int x, int y) {
@@ -1069,19 +1049,24 @@ void MainWindow::OnContextMenu(HWND /*hwndFrom*/, int x, int y) {
     int selCount  = ListView_GetSelectedCount(m_hListView);
 
     HMENU hMenu = CreatePopupMenu();
+    std::wstring sExtractSel = I18n::Tr(IDS_CTX_EXTRACT_SELECTED);
+    std::wstring sOpenAssoc  = I18n::Tr(IDS_CTX_OPEN_ASSOC);
+    std::wstring sTest       = I18n::Tr(IDS_CTX_TEST);
+    std::wstring sInfo       = I18n::Tr(IDS_CTX_INFO);
+    std::wstring sDelete     = I18n::Tr(IDS_CTX_DELETE);
     AppendMenuW(hMenu, MF_STRING | (selCount > 0 ? MF_ENABLED : MF_GRAYED),
-                ID_EXTRACT_SELECTED, L"選択ファイルを展開(&E)");
+                ID_EXTRACT_SELECTED, sExtractSel.c_str());
     AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(hMenu, MF_STRING | (!readOnly && selCount > 0 ? MF_ENABLED : MF_GRAYED),
-                ID_OPEN_ASSOC, L"関連付けで開く(&O)");
-    AppendMenuW(hMenu, MF_STRING | MF_ENABLED, ID_TEST, L"テスト(&T)");
+                ID_OPEN_ASSOC, sOpenAssoc.c_str());
+    AppendMenuW(hMenu, MF_STRING | MF_ENABLED, ID_TEST, sTest.c_str());
     AppendMenuW(hMenu, MF_STRING | (selCount > 0 ? MF_ENABLED : MF_GRAYED),
-                ID_INFO, L"情報(&I)");
+                ID_INFO, sInfo.c_str());
     AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(hMenu, MF_STRING | (!readOnly && selCount > 0 ? MF_ENABLED : MF_GRAYED),
-                ID_DELETE, L"削除(&D)");
+                ID_DELETE, sDelete.c_str());
 
-    // キーボードから呼ばれた場合 (x==-1, y==-1) はカーソル位置を使う
+    // When called from keyboard (x==-1, y==-1), use cursor position
     if (x == -1 && y == -1) {
         POINT pt = {};
         GetCursorPos(&pt);
@@ -1095,20 +1080,17 @@ void MainWindow::OnContextMenu(HWND /*hwndFrom*/, int x, int y) {
 
 void MainWindow::OnTest() {
     if (m_archivePath.empty()) {
-        MessageBoxW(m_hwnd, L"テスト対象のアーカイブがありません。",
-                    L"AileEx", MB_ICONINFORMATION);
+        MessageBoxW(m_hwnd, I18n::Tr(IDS_INFO_NO_ARCHIVE_TO_TEST).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONINFORMATION);
         return;
     }
 
     App& app = App::Instance();
     bool useUnrar = m_openedWithUnrar;
-    if (!useUnrar && !app.Get7z().IsLoaded()) {
-        ShowError(L"7z.dll が読み込まれていません。");
-        return;
-    }
+    if (!Ensure7zLoaded(useUnrar)) return;
 
     ProgressDlg progDlg;
-    progDlg.Show(m_hwnd, L"テスト中...");
+    progDlg.Show(m_hwnd, I18n::Tr(IDS_PROGRESS_TESTING).c_str());
 
     auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
     m_pSink    = sink;
@@ -1130,19 +1112,19 @@ void MainWindow::OnTest() {
 
     HRESULT hrDone = progDlg.RunMessageLoop();
     m_worker.Wait();
-    // unrar.dll の TestArchive はキャンセル時も false (= E_FAIL) を返してしまうため、
-    // sink のキャンセルフラグを見て E_ABORT 相当に正規化する。
+    // unrar.dll's TestArchive returns false (= E_FAIL) even on cancel,
+    // so check sink's cancel flag and normalize to E_ABORT equivalent.
     bool wasCancelled = sink->IsCancelled();
     delete sink;
     m_pSink = nullptr;
 
     if (hrDone == E_ABORT || wasCancelled) {
-        // キャンセル時は無音
+        // Silent on cancel
     } else if (FAILED(hrDone)) {
-        ShowError(L"テストに失敗しました。", hrDone);
+        ShowError(I18n::Tr(IDS_TEST_FAILED).c_str(), hrDone);
     } else {
-        MessageBoxW(m_hwnd, L"アーカイブの整合性を確認しました。",
-                    L"AileEx", MB_ICONINFORMATION);
+        MessageBoxW(m_hwnd, I18n::Tr(IDS_TEST_OK).c_str(),
+                    I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONINFORMATION);
     }
 }
 
@@ -1152,13 +1134,24 @@ void MainWindow::OnFileOpen() {
                                 IID_PPV_ARGS(&pfd))))
         return;
 
+    // IDS_FILTER_ARCHIVE / IDS_FILTER_ALL_FILES stored as "label|pattern|" for OFN,
+    // split by '|' and repass to COMDLG_FILTERSPEC.
+    auto split = [](const std::wstring& s, std::wstring& a, std::wstring& b) {
+        auto p = s.find(L'|');
+        if (p == std::wstring::npos) { a = s; b.clear(); return; }
+        a = s.substr(0, p);
+        auto e = s.find(L'|', p + 1);
+        b = (e == std::wstring::npos) ? s.substr(p + 1) : s.substr(p + 1, e - p - 1);
+    };
+    std::wstring archiveLabel, archivePat, allLabel, allPat;
+    split(I18n::Tr(IDS_FILTER_ARCHIVE),   archiveLabel, archivePat);
+    split(I18n::Tr(IDS_FILTER_ALL_FILES), allLabel,     allPat);
     COMDLG_FILTERSPEC filter[] = {
-        { L"アーカイブファイル",
-          L"*.7z;*.zip;*.rar;*.tar;*.gz;*.bz2;*.xz;*.cab;*.iso;*.jar;*.wim;*.lzma;*.lzh;*.arj" },
-        { L"すべてのファイル", L"*.*" },
+        { archiveLabel.c_str(), archivePat.c_str() },
+        { allLabel.c_str(),     allPat.c_str()     },
     };
     pfd->SetFileTypes((UINT)_countof(filter), filter);
-    pfd->SetTitle(L"アーカイブファイルを開く");
+    pfd->SetTitle(I18n::Tr(IDS_TITLE_OPEN_ARCHIVE).c_str());
 
     if (SUCCEEDED(pfd->Show(m_hwnd))) {
         IShellItem* psi = nullptr;
@@ -1174,8 +1167,8 @@ void MainWindow::OnFileOpen() {
     pfd->Release();
 }
 
-// ファイルから VS_VERSION_INFO の FileVersion 文字列を取り出す。
-// 取得できない場合は空文字列。
+// Extract VS_VERSION_INFO FileVersion string from file.
+// Returns empty string if unavailable.
 static std::wstring GetFileVersionString(const wchar_t* path) {
     if (!path || !path[0]) return {};
     DWORD handle = 0;
@@ -1184,8 +1177,8 @@ static std::wstring GetFileVersionString(const wchar_t* path) {
     std::vector<BYTE> buf(size);
     if (!GetFileVersionInfoW(path, handle, size, buf.data())) return {};
 
-    // 翻訳テーブルから言語コードを取得し StringFileInfo\xxxx\FileVersion を引く。
-    // 一般のサードパーティ製 DLL/EXE は "26.00ZSv1.5.7R1" のような表示用文字列を入れている。
+    // Get language code from translation table and query StringFileInfo\xxxx\FileVersion.
+    // Most third-party DLLs/EXEs store a display string like "26.00ZSv1.5.7R1".
     struct LangCp { WORD lang; WORD cp; };
     LangCp* trans = nullptr;
     UINT len = 0;
@@ -1198,13 +1191,13 @@ static std::wstring GetFileVersionString(const wchar_t* path) {
         UINT vlen = 0;
         if (VerQueryValueW(buf.data(), key, (void**)&val, &vlen) && val && vlen > 0) {
             std::wstring s = val;
-            // 末尾の制御文字や空白を整理
+            // Trim trailing control characters and spaces
             while (!s.empty() && (s.back() == L' ' || s.back() == L'\0')) s.pop_back();
             if (!s.empty()) return s;
         }
     }
 
-    // フォールバック: VS_FIXEDFILEINFO の数値フィールド
+    // Fallback: numeric fields from VS_FIXEDFILEINFO
     VS_FIXEDFILEINFO* ffi = nullptr;
     if (VerQueryValueW(buf.data(), L"\\", (void**)&ffi, &len) && ffi) {
         wchar_t out[64];
@@ -1239,15 +1232,15 @@ static INT_PTR CALLBACK AboutDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM /*lp
             std::wstring p = ur.GetLoadedPath();
             entries.push_back({ LeafName(p), p });
         }
-        // RAR exe: 設定が空の場合は auto-detect（レジストリ + 既知パス）に
-        // フォールバックすることで Settings 未設定でも About ダイアログに表示する。
+        // RAR exe: if setting is empty, auto-detect (registry + known paths) as fallback,
+        // so About dialog shows it even if Settings not configured.
         std::wstring rarExe = app.GetSettings().GetRarExePath();
         if (rarExe.empty() || !PathFileExistsW(rarExe.c_str()))
             rarExe = RarProcess::FindRarExe();
         if (!rarExe.empty() && PathFileExistsW(rarExe.c_str()))
             entries.push_back({ LeafName(rarExe), rarExe });
 
-        // バージョン取得 + 名前列の最大幅で揃える
+        // Get versions + align by max name column width
         size_t maxName = 0;
         std::vector<std::wstring> versions;
         versions.reserve(entries.size());
@@ -1259,27 +1252,27 @@ static INT_PTR CALLBACK AboutDlgProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM /*lp
         std::wstring text;
         for (size_t i = 0; i < entries.size(); ++i) {
             text += entries[i].name;
-            // 名前列の右にパディングしてバージョンを揃える
+            // Pad right of name column to align versions
             text.append(maxName + 2 - entries[i].name.size(), L' ');
-            text += versions[i].empty() ? L"(バージョン情報なし)" : versions[i];
+            text += versions[i].empty() ? I18n::Tr(IDS_ABOUT_NO_VERSION) : versions[i];
             text += L"\r\n";
         }
         if (entries.empty())
-            text = L"(コンポーネントが読み込まれていません)";
+            text = I18n::Tr(IDS_ABOUT_NOT_LOADED);
 
         SetDlgItemTextW(hwnd, IDC_ABOUT_LIST, text.c_str());
 
-        // 等幅フォントでバージョン表示を綺麗に揃える
+        // Use monospace font to align version display cleanly
         HFONT hMono = CreateFontW(-13, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
                                   DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                   CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
         if (hMono) {
             SendDlgItemMessageW(hwnd, IDC_ABOUT_LIST, WM_SETFONT, (WPARAM)hMono, TRUE);
-            // ダイアログ破棄時に解放
+            // Free when dialog is destroyed
             SetPropW(hwnd, L"AboutMonoFont", hMono);
         }
 
-        // タイトルラベルを少し大きめにする
+        // Make title label slightly larger
         HFONT hTitle = CreateFontW(-15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
                                    DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                                    CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
@@ -1315,10 +1308,10 @@ void MainWindow::OnMruOpen(int idx) {
     const auto& mru = settings.GetMruPaths();
     if (idx < 0 || idx >= (int)mru.size()) return;
 
-    std::wstring path = mru[idx];   // OpenArchive 内で AddMru されると並び替わるためコピー
+    std::wstring path = mru[idx];   // Copy because OpenArchive's AddMru reorders it
     if (!PathFileExistsW(path.c_str())) {
-        std::wstring msg = L"ファイルが見つかりません:\n" + path + L"\n\n履歴から削除します。";
-        MessageBoxW(m_hwnd, msg.c_str(), L"AileEx", MB_ICONWARNING);
+        std::wstring msg = I18n::TrFmt(IDS_FMT_FILE_NOT_FOUND, path.c_str());
+        MessageBoxW(m_hwnd, msg.c_str(), I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONWARNING);
         settings.RemoveMru(path);
         settings.Save();
         RebuildMruMenu();
@@ -1330,21 +1323,22 @@ void MainWindow::OnMruOpen(int idx) {
 void MainWindow::RebuildMruMenu() {
     if (!m_hMruMenu) return;
 
-    // 既存項目を全削除
+    // Delete all existing items
     while (DeleteMenu(m_hMruMenu, 0, MF_BYPOSITION)) {}
 
     const auto& mru = App::Instance().GetSettings().GetMruPaths();
     if (mru.empty()) {
-        AppendMenuW(m_hMruMenu, MF_STRING | MF_GRAYED, IDM_FILE_MRU_PH, L"(履歴なし)");
+        AppendMenuW(m_hMruMenu, MF_STRING | MF_GRAYED, IDM_FILE_MRU_PH,
+                    I18n::Tr(IDS_MRU_NO_HISTORY).c_str());
     } else {
         for (size_t i = 0; i < mru.size(); ++i) {
-            // 先頭 9 件は &1..&9 でアクセラレータ表示。10 件目以降はインデント揃え。
+            // First 9 show accelerators &1..&9. 10+ indent-aligned.
             wchar_t prefix[8];
             if (i < 9)
                 swprintf_s(prefix, L"&%zu  ", i + 1);
             else
                 swprintf_s(prefix, L"     ");
-            // & はメニュー上で下線扱いなので二重化してエスケープ
+            // & is underlined in menus, so double-escape it
             std::wstring label = prefix;
             for (wchar_t c : mru[i]) {
                 if (c == L'&') label += L"&&";
@@ -1392,6 +1386,9 @@ void MainWindow::OnInitMenuPopup(HMENU hMenu) {
     setEnabled(ID_TEST,       hasArchive);
     setEnabled(ID_OPEN_ASSOC, hasArchive && !readOnly);
     setEnabled(ID_INFO,       selCount > 0);
+    setEnabled(IDM_FILE_PROPERTIES, hasArchive);
+    setEnabled(ID_ARCHIVE_COMMENT, hasArchive);
+    setEnabled(ID_ADD_TO_CURRENT, hasArchive && !m_isReadOnly);
     setEnabled(ID_DELETE,     hasArchive && !readOnly && selCount > 0);
 
     CheckMenuItem(hMenu, IDM_VIEW_TREE,
@@ -1430,40 +1427,16 @@ void MainWindow::OnProgress(int pct, wchar_t* filename) {
 
 void MainWindow::OnDone(HRESULT hr) {
     if (FAILED(hr) && hr != E_ABORT) {
-        ShowError(L"操作に失敗しました。", hr);
+        ShowError(I18n::Tr(IDS_OP_FAILED).c_str(), hr);
     }
-    SetWindowTextW(m_hStatus, L"完了");
+    SetWindowTextW(m_hStatus, I18n::Tr(IDS_DONE).c_str());
 }
 
 // ---- Compress flow ----
 
 void MainWindow::OnAddFiles() {
-    // Open multi-select file picker
-    wchar_t buf[32768] = {};
-    OPENFILENAMEW ofn = {};
-    ofn.lStructSize  = sizeof(ofn);
-    ofn.hwndOwner    = m_hwnd;
-    ofn.lpstrFile    = buf;
-    ofn.nMaxFile     = _countof(buf);
-    ofn.lpstrTitle   = L"圧縮するファイルを選択";
-    ofn.Flags        = OFN_FILEMUSTEXIST | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
-    if (!GetOpenFileNameW(&ofn)) return;
-
-    // Parse multi-select result: first string is directory, rest are filenames
-    std::vector<std::wstring> files;
-    const wchar_t* p = buf;
-    std::wstring dir = p;
-    p += dir.size() + 1;
-    if (*p == L'\0') {
-        // Only one file selected
-        files.push_back(dir);
-    } else {
-        while (*p) {
-            std::wstring name = p;
-            files.push_back(dir + L'\\' + name);
-            p += name.size() + 1;
-        }
-    }
+    auto files = BrowseMultipleFiles(m_hwnd, IDS_TITLE_SELECT_COMPRESS);
+    if (files.empty()) return;
 
     CompressDlg::Params params;
     params.inputFiles = std::move(files);
@@ -1481,6 +1454,98 @@ void MainWindow::OnAddFiles() {
     }
 }
 
+// 現在開いているアーカイブにファイルを追加する。
+// ファイルピッカーでファイル群を選んで AddFilesToCurrentArchive に流す。
+void MainWindow::OnAddFilesToCurrentArchive() {
+    if (m_archivePath.empty() || m_isReadOnly) return;
+
+    auto files = BrowseMultipleFiles(m_hwnd, IDS_TITLE_SELECT_ADD);
+    if (files.empty()) return;
+
+    AddFilesToCurrentArchive(std::move(files));
+}
+
+// アーカイブへの追加ワーカー駆動。RAR は rar.exe `a`、それ以外は 7z.dll の AddToArchive。
+void MainWindow::AddFilesToCurrentArchive(std::vector<std::wstring> srcPaths) {
+    if (m_archivePath.empty() || m_isReadOnly || srcPaths.empty()) return;
+
+    App& app = App::Instance();
+
+    // 操作実体（split 自動アンラップ後の一時ファイル）は read-only 扱いなので
+    // ここでは m_archivePath をそのまま使う（m_isReadOnly で既に弾いている）。
+    const std::wstring archivePath = m_archivePath;
+    const std::wstring archiveFolder = SelectedFolderPath();  // "" なら root 直下
+
+    // RAR 判定: 拡張子が .rar、または unrar.dll で開いている
+    bool isRar = m_openedWithUnrar;
+    if (!isRar) {
+        const wchar_t* dot = wcsrchr(archivePath.c_str(), L'.');
+        if (dot && _wcsicmp(dot + 1, L"rar") == 0) isRar = true;
+    }
+
+    ProgressDlg progDlg;
+    progDlg.Show(m_hwnd, I18n::Tr(IDS_PROGRESS_ADDING).c_str());
+
+    auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
+    m_pSink = sink;
+    progDlg.SetSink(sink);
+
+    HRESULT hrDone = S_OK;
+
+    if (isRar) {
+        // RAR: rar.exe `a` で追加。SFX/分割は付与しない（既存アーカイブ向け）。
+        const auto& s = app.GetSettings();
+        wchar_t levelBuf[2] = { (wchar_t)(L'0' + (s.GetRarLevel() & 7)), L'\0' };
+        if (s.GetRarLevel() < 0 || s.GetRarLevel() > 5) levelBuf[0] = L'3';
+        std::wstring rarExe = s.GetRarExePath();
+
+        RarProcess rar;
+        if (!rar.Add(archivePath.c_str(), srcPaths,
+                     archiveFolder.empty() ? nullptr : archiveFolder.c_str(),
+                     levelBuf,
+                     rarExe.empty() ? nullptr : rarExe.c_str(),
+                     nullptr, false,
+                     m_hwnd, WM_APP_PROGRESS, WM_APP_DONE)) {
+            progDlg.Dismiss();
+            delete sink; m_pSink = nullptr;
+            return;
+        }
+        hrDone = progDlg.RunMessageLoop([&]{ rar.Cancel(); });
+    } else {
+        // 7z/zip/tar 等: SevenZip::AddToArchive
+        if (!app.Get7z().IsLoaded()) {
+            progDlg.Dismiss();
+            delete sink; m_pSink = nullptr;
+            ShowError(I18n::Tr(IDS_ERR_7Z_NOT_LOADED).c_str());
+            return;
+        }
+        auto& sz = app.Get7z();
+
+        int  level  = app.GetSettings().GetCompressionLevel();
+        // method は形式デフォルトに任せる（空文字列 → 7z.dll 既定）
+        m_worker.Start([&sz, archivePath, srcPaths, archiveFolder, level, sink]() -> HRESULT {
+            return sz.AddToArchive(archivePath.c_str(), srcPaths,
+                                   archiveFolder.empty() ? nullptr : archiveFolder.c_str(),
+                                   nullptr, level, L"", sink);
+        }, m_hwnd, WM_APP_DONE);
+        hrDone = progDlg.RunMessageLoop();
+        m_worker.Wait();
+    }
+
+    delete sink;
+    m_pSink = nullptr;
+
+    if (FAILED(hrDone) && hrDone != E_ABORT) {
+        ShowError(I18n::Tr(IDS_ERR_ADD_FAILED).c_str(), hrDone);
+        return;
+    }
+    if (hrDone == E_ABORT) return;
+
+    // 成功 → アーカイブを再読込し、追加先フォルダを再選択
+    OpenArchive(archivePath.c_str());
+    if (!archiveFolder.empty()) SelectTreeFolder(archiveFolder);
+}
+
 void MainWindow::OnInfo() {
     int sel = ListView_GetNextItem(m_hListView, -1, LVNI_SELECTED);
     if (sel < 0) return;
@@ -1494,6 +1559,109 @@ void MainWindow::OnInfo() {
 
     InfoDlg dlg;
     dlg.Show(m_hwnd, m_items[arcIdx]);
+}
+
+void MainWindow::OnArchiveProperties() {
+    if (m_archivePath.empty()) return;
+
+    // 操作実体（split 自動アンラップ後の一時ファイル）があればそちらを 7z.dll に渡す。
+    const std::wstring& target = m_effectiveArchivePath.empty()
+                                 ? m_archivePath
+                                 : m_effectiveArchivePath;
+
+    ArchiveProperties props;
+    bool haveProps = false;
+
+    // unrar.dll で開いたものは 7z.dll では読めない可能性が高い (rar 未対応 dll など)。
+    // それでも一応試して、失敗なら items からのフォールバック表示にする。
+    auto& sz7 = App::Instance().Get7z();
+    if (sz7.IsLoaded()) {
+        HRESULT hr = sz7.GetArchiveProperties(target.c_str(), nullptr, props);
+        if (SUCCEEDED(hr)) haveProps = true;
+    }
+
+    const wchar_t* fallback = m_openedWithUnrar ? L"RAR" : L"";
+    PropertiesDlg dlg;
+    dlg.Show(m_hwnd, m_archivePath, m_items,
+             haveProps ? &props : nullptr, fallback);
+}
+
+void MainWindow::OnArchiveComment() {
+    if (m_archivePath.empty()) return;
+
+    const std::wstring& target = m_effectiveArchivePath.empty()
+                                 ? m_archivePath
+                                 : m_effectiveArchivePath;
+
+    std::wstring comment;
+    App& app = App::Instance();
+
+    if (m_openedWithUnrar && app.GetUnrar().IsLoaded()) {
+        app.GetUnrar().GetArchiveComment(target.c_str(), comment);
+    }
+    if (comment.empty() && app.Get7z().IsLoaded()) {
+        app.Get7z().GetArchiveComment(target.c_str(), nullptr, comment);
+    }
+
+    // 編集可否判定: split 自動アンラップ後の一時ファイルは read-only。
+    // ZIP は 7z.dll 不要で直接書換え。RAR は rar.exe 必須。それ以外（7z/tar/iso 等）は編集不可。
+    const wchar_t* dot = wcsrchr(m_archivePath.c_str(), L'.');
+    std::wstring ext = dot ? std::wstring(dot + 1) : L"";
+    for (auto& c : ext) c = (wchar_t)towlower(c);
+
+    bool isZip = (ext == L"zip");
+    bool isRar = (ext == L"rar" || m_openedWithUnrar);
+
+    bool readOnly = m_isReadOnly || (!isZip && !isRar);
+
+    std::wstring leaf = m_archivePath;
+    auto sl = leaf.find_last_of(L"\\/");
+    if (sl != std::wstring::npos) leaf = leaf.substr(sl + 1);
+
+    std::wstring edited;
+    CommentDlg dlg;
+    if (!dlg.Show(m_hwnd, leaf, comment, readOnly, edited)) return;
+
+    // 保存処理
+    HRESULT hrSave = E_FAIL;
+    if (isZip) {
+        if (app.Get7z().IsLoaded()) {
+            hrSave = app.Get7z().SetZipArchiveComment(m_archivePath.c_str(), edited);
+        } else {
+            ShowError(I18n::Tr(IDS_ERR_ZIP_COMMENT_NEEDS_7Z).c_str());
+            return;
+        }
+    } else if (isRar) {
+        // RAR: rar.exe c -z で適用。完了は WM_APP_DONE で待つ。
+        ProgressDlg progDlg;
+        progDlg.Show(m_hwnd, I18n::Tr(IDS_PROGRESS_SAVING_COMMENT).c_str());
+        auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
+        m_pSink = sink;
+        progDlg.SetSink(sink);
+
+        const std::wstring rarExe = app.GetSettings().GetRarExePath();
+        RarProcess rar;
+        if (!rar.SetComment(m_archivePath.c_str(), edited,
+                            rarExe.empty() ? nullptr : rarExe.c_str(),
+                            m_hwnd, WM_APP_DONE)) {
+            progDlg.Dismiss();
+            delete sink; m_pSink = nullptr;
+            ShowError(I18n::Tr(IDS_ERR_RAR_LAUNCH).c_str());
+            return;
+        }
+        hrSave = progDlg.RunMessageLoop([&]{ rar.Cancel(); });
+        delete sink; m_pSink = nullptr;
+    }
+
+    if (FAILED(hrSave) && hrSave != E_ABORT) {
+        ShowError(I18n::Tr(IDS_ERR_COMMENT_SAVE_FAILED).c_str(), hrSave);
+        return;
+    }
+    if (hrSave == E_ABORT) return;
+
+    // 成功 → アーカイブを再 Open（ツリー選択は OpenArchive 内で root にリセットされるが、
+    //         コメント編集はフォルダ位置に依存しないので問題なし）
+    OpenArchive(m_archivePath.c_str());
 }
 
 void MainWindow::OnDelete() {
@@ -1527,7 +1695,7 @@ void MainWindow::OnDelete() {
 
         if (!folder.empty()) {
             folderPaths.insert(folder);
-            std::wstring prefix = folder + L"/";
+            std::wstring prefix = folder + L"\\";
             for (UINT32 j = 0; j < (UINT32)m_items.size(); ++j) {
                 if (m_items[j].path.size() > prefix.size() &&
                     m_items[j].path.compare(0, prefix.size(), prefix) == 0) {
@@ -1540,12 +1708,9 @@ void MainWindow::OnDelete() {
 
     // 確認 — 元の ListView 選択数を提示（フォルダ展開後の数より直感的）
     int origCount = ListView_GetSelectedCount(m_hListView);
-    wchar_t msg[256];
-    swprintf_s(msg,
-               L"選択した %d 個の項目をアーカイブから削除します。\n"
-               L"（フォルダは配下も含めて削除されます）\n\nよろしいですか？",
-               origCount);
-    if (MessageBoxW(m_hwnd, msg, L"削除確認", MB_YESNO | MB_ICONWARNING) != IDYES)
+    std::wstring msg = I18n::TrFmt(IDS_FMT_DELETE_CONFIRM, origCount);
+    if (MessageBoxW(m_hwnd, msg.c_str(), I18n::Tr(IDS_TITLE_DELETE_CONFIRM).c_str(),
+                    MB_YESNO | MB_ICONWARNING) != IDYES)
         return;
 
     App& app = App::Instance();
@@ -1553,7 +1718,7 @@ void MainWindow::OnDelete() {
     bool isRar = (dot && _wcsicmp(dot + 1, L"rar") == 0);
 
     ProgressDlg progDlg;
-    progDlg.Show(m_hwnd, L"削除中...");
+    progDlg.Show(m_hwnd, I18n::Tr(IDS_PROGRESS_DELETING).c_str());
 
     auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
     m_pSink = sink;
@@ -1586,7 +1751,7 @@ void MainWindow::OnDelete() {
         if (!app.Get7z().IsLoaded()) {
             progDlg.Dismiss();
             delete sink; m_pSink = nullptr;
-            ShowError(L"7z.dll が読み込まれていません。");
+            ShowError(I18n::Tr(IDS_ERR_7Z_NOT_LOADED).c_str());
             return;
         }
         std::vector<UINT32> deleteIndices(indexSet.begin(), indexSet.end());
@@ -1602,7 +1767,7 @@ void MainWindow::OnDelete() {
     m_pSink = nullptr;
 
     if (FAILED(hrDone) && hrDone != E_ABORT) {
-        ShowError(L"削除に失敗しました。", hrDone);
+        ShowError(I18n::Tr(IDS_ERR_DELETE_FAILED).c_str(), hrDone);
         return;
     }
     if (hrDone == E_ABORT) return;
@@ -1622,7 +1787,7 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
     auto  pw      = params.password;
 
     ProgressDlg progDlg;
-    progDlg.Show(m_hwnd, L"圧縮中...");
+    progDlg.Show(m_hwnd, I18n::Tr(IDS_PROGRESS_COMPRESSING).c_str());
 
     auto* sink = new ProgressPostSink(m_hwnd, WM_APP_PROGRESS, WM_APP_DONE);
     m_pSink = sink;
@@ -1643,10 +1808,26 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
         if (!App::Instance().Get7z().IsLoaded()) {
             progDlg.Dismiss();
             delete sink; m_pSink = nullptr;
-            ShowError(L"7z.dll が読み込まれていません。");
+            ShowError(I18n::Tr(IDS_ERR_7Z_NOT_LOADED).c_str());
             return;
         }
         auto& sz = App::Instance().Get7z();
+
+        // 7z SFX モジュールの解決（指定があれば 7z.dll と同じフォルダを検索）
+        std::wstring sfxModulePath;
+        if (!params.sfxMode.empty()) {
+            sfxModulePath = Resolve7zSfxModulePath(
+                sz.GetLoadedPath().c_str(), params.sfxMode.c_str());
+            if (sfxModulePath.empty()) {
+                progDlg.Dismiss();
+                delete sink; m_pSink = nullptr;
+                const wchar_t* leaf = (params.sfxMode == L"console") ? L"7zCon.sfx" : L"7z.sfx";
+                std::wstring msg = I18n::TrFmt(IDS_FMT_SFX_NOT_FOUND_7Z, leaf);
+                MessageBoxW(m_hwnd, msg.c_str(), I18n::Tr(IDS_APP_TITLE).c_str(), MB_ICONERROR);
+                return;
+            }
+        }
+
         auto advDict    = params.dictSize;
         auto advWord    = params.wordSize;
         auto advSolid   = params.solidBlock;
@@ -1655,14 +1836,16 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
         auto advVolume  = params.volumeSize;
         bool encHdr     = params.encryptHeaders;
         m_worker.Start([&sz, inputs, outPath, format, level, method, pw, sink,
-                        advDict, advWord, advSolid, advThreads, advExtra, advVolume, encHdr]() -> HRESULT {
+                        advDict, advWord, advSolid, advThreads, advExtra, advVolume,
+                        sfxModulePath, encHdr]() -> HRESULT {
             CompressAdvanced adv;
-            adv.dictSize   = advDict;
-            adv.wordSize   = advWord;
-            adv.solidBlock = advSolid;
-            adv.threads    = advThreads;
-            adv.extra      = advExtra;
-            adv.volumeSize = advVolume;
+            adv.dictSize      = advDict;
+            adv.wordSize      = advWord;
+            adv.solidBlock    = advSolid;
+            adv.threads       = advThreads;
+            adv.extra         = advExtra;
+            adv.volumeSize    = advVolume;
+            adv.sfxModulePath = sfxModulePath;
             return sz.Compress(inputs, outPath.c_str(), format.c_str(),
                                level, method.c_str(), pw.empty() ? nullptr : pw.c_str(),
                                sink, &adv, encHdr);
@@ -1675,7 +1858,7 @@ void MainWindow::OnCompress(CompressDlg::Params& params) {
     m_pSink = nullptr;
 
     if (FAILED(hrDone) && hrDone != E_ABORT)
-        ShowError(L"圧縮に失敗しました。", hrDone);
+        ShowError(I18n::Tr(IDS_ERR_COMPRESS_FAILED).c_str(), hrDone);
 }
 
 // ---- Tree and List population ----
@@ -1814,7 +1997,8 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
         ListView_InsertItem(m_hListView, &lvi);
         ListView_SetItemText(m_hListView, row, 1, const_cast<wchar_t*>(L""));
         ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(L""));
-        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(L"フォルダ"));
+        std::wstring folderType = I18n::Tr(IDS_TYPE_FOLDER);
+        ListView_SetItemText(m_hListView, row, 3, folderType.data());
         ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(L""));
     }
 
@@ -1912,7 +2096,8 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
 
         ListView_SetItemText(m_hListView, row, 1, const_cast<wchar_t*>(L""));
         ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(L""));
-        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(L"フォルダ"));
+        std::wstring folderType = I18n::Tr(IDS_TYPE_FOLDER);
+        ListView_SetItemText(m_hListView, row, 3, folderType.data());
         ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(L""));
     }
 
@@ -1939,7 +2124,8 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
         ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(packedStr.c_str()));
 
         // Type
-        std::wstring typeStr = it.isDir ? L"フォルダ" : (!it.method.empty() ? it.method : L"ファイル");
+        std::wstring typeStr = it.isDir ? I18n::Tr(IDS_TYPE_FOLDER)
+                             : (!it.method.empty() ? it.method : I18n::Tr(IDS_TYPE_FILE));
         ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(typeStr.c_str()));
 
         // Date
@@ -1989,6 +2175,33 @@ void MainWindow::OnColumnClick(int col) {
     PopulateList(SelectedFolderPath());
 }
 
+void MainWindow::SelectTreeFolder(const std::wstring& folderPath) {
+    if (!m_hTreeView) return;
+    int targetIdx = -1;
+    for (int i = 0; i < (int)m_folderPaths.size(); ++i) {
+        if (m_folderPaths[i] == folderPath) { targetIdx = i; break; }
+    }
+    if (targetIdx < 0) return;
+
+    std::function<HTREEITEM(HTREEITEM)> findItem = [&](HTREEITEM h) -> HTREEITEM {
+        while (h) {
+            TVITEMW tvi = {}; tvi.hItem = h; tvi.mask = TVIF_PARAM;
+            TreeView_GetItem(m_hTreeView, &tvi);
+            if ((int)tvi.lParam == targetIdx) return h;
+            if (HTREEITEM child = TreeView_GetChild(m_hTreeView, h)) {
+                if (HTREEITEM found = findItem(child)) return found;
+            }
+            h = TreeView_GetNextSibling(m_hTreeView, h);
+        }
+        return nullptr;
+    };
+    HTREEITEM hRoot = TreeView_GetRoot(m_hTreeView);
+    if (HTREEITEM hFound = findItem(hRoot)) {
+        TreeView_EnsureVisible(m_hTreeView, hFound);
+        TreeView_SelectItem(m_hTreeView, hFound);
+    }
+}
+
 std::wstring MainWindow::SelectedFolderPath() const {
     HTREEITEM hSel = TreeView_GetSelection(m_hTreeView);
     if (!hSel) return L"";
@@ -2012,6 +2225,14 @@ void MainWindow::ShowError(const wchar_t* msg, HRESULT hr) {
         text += hrStr;
     }
     MessageBoxW(m_hwnd, text.c_str(), L"AileEx", MB_ICONERROR);
+}
+
+bool MainWindow::Ensure7zLoaded(bool useUnrar) {
+    if (!useUnrar && !App::Instance().Get7z().IsLoaded()) {
+        ShowError(I18n::Tr(IDS_ERR_7Z_NOT_LOADED).c_str());
+        return false;
+    }
+    return true;
 }
 
 // パスワード入力ダイアログを表示し、入力された文字列を返す。

@@ -4,6 +4,7 @@
 #include <commctrl.h>
 #include <vector>
 #include <string>
+#include <set>
 #include "ArchiveItem.h"
 #include "WorkerThread.h"
 #include "CompressDlg.h"
@@ -33,11 +34,19 @@ private:
     void OnListDblClick();
     void OnExtract();
     void OnExtractSelected();
+    // Common extraction driver. indices empty = extract all (7z path).
+    // rarTargetPaths empty = extract all (unrar path).
+    void RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths);
     void OnContextMenu(HWND hwndFrom, int x, int y);
     void OnTest();
     void OnOpenAssoc();
     void OnAddFiles();
+    void OnAddFilesToCurrentArchive();
+    // ファイル群を現在開いているアーカイブへ追加するワーカー駆動。`srcPaths` が空ならファイルピッカーを出す。
+    void AddFilesToCurrentArchive(std::vector<std::wstring> srcPaths);
     void OnInfo();
+    void OnArchiveProperties();
+    void OnArchiveComment();
     void OnDelete();
     void OnFileOpen();
     void OnAbout();
@@ -58,7 +67,11 @@ private:
     void PopulateTree();
     void PopulateList(const std::wstring& folderPath);
     std::wstring SelectedFolderPath() const;
+    // m_folderPaths から `folderPath` を探してツリーで選択する。見つからなければ何もしない。
+    void SelectTreeFolder(const std::wstring& folderPath);
     void ShowError(const wchar_t* msg, HRESULT hr = 0);
+    // Returns false and shows error if 7z is required but not loaded.
+    bool Ensure7zLoaded(bool useUnrar = false);
     // Returns entered password, or empty string if user cancelled.
     std::wstring PromptPassword();
 
