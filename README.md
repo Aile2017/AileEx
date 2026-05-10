@@ -31,7 +31,7 @@ Backed by 7z.dll and implemented with Win32 API / C++17.
 | File | Default path | Purpose |
 |---|---|---|
 | `7z.dll` | Auto-detected from registry `HKLM\SOFTWARE\7-Zip` → `%ProgramFiles%\7-Zip\7z.dll` → same directory as AileEx.exe | General archive operations |
-| `unrar.dll` (`UnRAR64.dll`) | Same directory as AileEx.exe | RAR extraction (optional) |
+| `unrar.dll` (`UnRAR64.dll`) | Auto-detected from `%ProgramFiles%\UnrarDLL\x64\UnRAR64.dll` → `%ProgramFiles(x86)%\UnrarDLL\x64\UnRAR64.dll` → same directory as AileEx.exe (`unrar.dll`) | RAR extraction (optional) |
 | `WinRAR.exe` / `Rar.exe` | Auto-detected from registry `HKLM\SOFTWARE\WinRAR` → `%ProgramFiles%\WinRAR\` | RAR compression (optional; WinRAR.exe preferred, falls back to Rar.exe) |
 
 ## Build
