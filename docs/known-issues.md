@@ -120,3 +120,7 @@ Notes:
 Opening `archive.7z.001`, 7z.dll **selects Split handler from extension map**. Split handler requests `archive.7z.002`, `.003`, ... from host via `IArchiveOpenVolumeCallback::GetStream`, builds concatenated stream internally, then passes to actual handler (e.g., 7z). `COpenVolumeCallback` (`SevenZip.cpp`) simply opens matching file from same dir and returns it. If requested file doesn't exist, return `S_FALSE` (DLL treats as final volume signal).
 
 Volume 1 detection in `OpenArchive`: if extension is **all digits** (`001`, `002` etc.), treat as split archive and pass volume callback. RAR's `.partN.rar` has `.rar` extension, so unrar.dll / 7z.dll RAR handler resolves next volume internally (callback unnecessary).
+
+## RAR 4 CJK Filename Encoding Limitation
+
+unrar.dll converts RAR 4 archive filenames (stored in local code page) to UTF-16 via `RARHeaderDataEx::FileNameW`. However, WinRAR 5.0+ no longer supports creation of RAR 4 archives, making testing with modern tools impossible. If legacy RAR 4 archives with CJK filenames are encountered and exhibit corruption/garbling, the root cause lies in unrar.dll's code page conversion, which is beyond AileEx control. Workaround: convert to RAR 5 (which uses full Unicode) or 7z format.
