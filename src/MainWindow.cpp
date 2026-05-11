@@ -200,21 +200,34 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         }
     }
 
-    // On open failure: may be encrypted header, prompt for password and retry
+    // On open failure: may be encrypted header, prompt for password and retry.
+    // Respect the user's preferred backend (preferUnrar) and fall back to the other.
     if (FAILED(hr)) {
         std::wstring pw = PromptPassword();
         if (!pw.empty()) {
             m_items.clear();
-            if (m_openedWithUnrar || (isRar && app.GetUnrar().IsLoaded())) {
-                // Retry with unrar + password (RAR 5+ header encryption)
+            if (preferUnrar) {
+                // User prefers unrar → try unrar first, then 7z
                 if (app.GetUnrar().ListArchive(path, m_items, pw.c_str())) {
                     hr = S_OK;
                     m_openedWithUnrar = true;
                 }
-            }
-            if (FAILED(hr) && app.Get7z().IsLoaded()) {
-                m_items.clear();
-                hr = app.Get7z().OpenArchive(path, m_items, pw.c_str(), &m_effectiveArchivePath);
+                if (FAILED(hr) && app.Get7z().IsLoaded()) {
+                    m_items.clear();
+                    hr = app.Get7z().OpenArchive(path, m_items, pw.c_str(), &m_effectiveArchivePath);
+                }
+            } else {
+                // User prefers 7z → try 7z first, then unrar as fallback
+                if (app.Get7z().IsLoaded()) {
+                    hr = app.Get7z().OpenArchive(path, m_items, pw.c_str(), &m_effectiveArchivePath);
+                }
+                if (FAILED(hr) && isRar && app.GetUnrar().IsLoaded()) {
+                    m_items.clear();
+                    if (app.GetUnrar().ListArchive(path, m_items, pw.c_str())) {
+                        hr = S_OK;
+                        m_openedWithUnrar = true;
+                    }
+                }
             }
         }
     }
