@@ -117,7 +117,7 @@ bool UnrarDll::ExtractArchiveSelected(const wchar_t* path, const wchar_t* destDi
 }
 
 bool UnrarDll::ListArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
-                           const wchar_t* /*password*/) {
+                           const wchar_t* password) {
     if (!IsLoaded()) return false;
     items.clear();
 
@@ -126,6 +126,18 @@ bool UnrarDll::ListArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
     od.OpenMode  = RAR_OM_LIST;
     HANDLE hArc  = m_pfnOpen(&od);
     if (!hArc || od.OpenResult != ERAR_SUCCESS) return false;
+
+    // パスワード設定（RAR 5+ ファイル名暗号化対応）
+    if (m_pfnSetCb && password && password[0]) {
+        auto cb = [](UINT msg, LPARAM ud, LPARAM p1, LPARAM p2) -> int {
+            if (msg == UCM_NEEDPASSWORDW) {
+                const wchar_t* pw = reinterpret_cast<const wchar_t*>(ud);
+                wcsncpy_s(reinterpret_cast<wchar_t*>(p1), (size_t)(p2 / sizeof(wchar_t)), pw, _TRUNCATE);
+            }
+            return 1;
+        };
+        m_pfnSetCb(hArc, cb, (LPARAM)password);
+    }
 
     RARHeaderDataEx hdr = {};
     int res;

@@ -200,12 +200,22 @@ void MainWindow::OpenArchive(const wchar_t* path) {
         }
     }
 
-    // On 7z open failure: may be encrypted header, prompt for password and retry
-    if (FAILED(hr) && !m_openedWithUnrar && app.Get7z().IsLoaded()) {
+    // On open failure: may be encrypted header, prompt for password and retry
+    if (FAILED(hr)) {
         std::wstring pw = PromptPassword();
         if (!pw.empty()) {
             m_items.clear();
-            hr = app.Get7z().OpenArchive(path, m_items, pw.c_str(), &m_effectiveArchivePath);
+            if (m_openedWithUnrar || (isRar && app.GetUnrar().IsLoaded())) {
+                // Retry with unrar + password (RAR 5+ header encryption)
+                if (app.GetUnrar().ListArchive(path, m_items, pw.c_str())) {
+                    hr = S_OK;
+                    m_openedWithUnrar = true;
+                }
+            }
+            if (FAILED(hr) && app.Get7z().IsLoaded()) {
+                m_items.clear();
+                hr = app.Get7z().OpenArchive(path, m_items, pw.c_str(), &m_effectiveArchivePath);
+            }
         }
     }
 
