@@ -24,6 +24,14 @@ The operating mode is determined by command-line arguments to `AileEx.exe`.
 | Archive file | Browse mode — open archive in main window |
 | Regular file | Compress mode — show compression dialog |
 | Mixed | Compress mode takes priority |
+| `-x <archive>` | Forced extract mode — show extract destination dialog directly, skipping the list view. Non-archive extensions are rejected before opening. |
+| `-a <file...>` | Forced compress mode — show compression dialog directly (equivalent to dropping regular files). |
+
+`-d <dir>` (also `-d<dir>`) can be combined with either flag to override the destination:
+- With `-x`: skips the folder picker and extracts directly to `<dir>` (MkDir policy still applied).
+- With `-a`: presets the output path field in the compression dialog to `<dir>`.
+
+Both `-x` and `-a` suppress the main window (`SW_HIDE`). The `-x` / `-a` flags take priority over auto-detection.
 
 Recognized extensions (treated as archives): `7z`, `zip`, `rar`, `tar`, `gz`, `bz2`, `xz`, `cab`, `iso`, `jar`, `wim`, `lzma`, `lzh`, `arj` and other formats dynamically enumerated by 7z.dll.
 
@@ -191,7 +199,12 @@ Displayed via **Help → About**. Shows title / version / links / credits.
 
 ### Password Input Dialog (`IDD_PASSWORD`)
 
-When opening header-encrypted 7z archive, automatically shown if `IInArchive::Open` fails. Attempts to reopen with entered password.
+Shown in two situations:
+
+- **Header-encrypted archive**: `IInArchive::Open` fails without a password → dialog shown before the list view appears. On success the password is stored in `MainWindow::m_password` and reused for subsequent extraction/test.
+- **Content-encrypted archive** (no header encryption): `IInArchive::Open` succeeds and the list is displayed, but encrypted entries are detected at extraction time → dialog shown before the destination folder picker. Password is stored in `m_password` for the extraction call.
+
+In both cases `m_password` is cleared each time a new archive is opened.
 
 ### Keyboard Accelerators
 
@@ -245,7 +258,6 @@ Priority and implementation approach for unimplemented features: see [`docs/road
 - Archive search/filter not implemented
 - Multi-archive simultaneous browse (tabs etc.) not implemented
 - Multi-language support (i18n) not implemented (Japanese hardcoded)
-- CLI direct execution (extraction/test without GUI) not implemented
 - RAR delete cancel path not implemented (`RarProcess::Delete` does not support `Cancel()`)
-- Header-encrypted 7z archive deletion fails (password not retained)
+- Header-encrypted 7z archive deletion fails (password is not passed to the delete path)
 - Manual test matrix partially implemented (RAR formats confirmed only)

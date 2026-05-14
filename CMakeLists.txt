@@ -13,7 +13,6 @@ add_executable(AileEx WIN32
     src/MainWindow.cpp
     src/CompressDlg.cpp
     src/CompressHelper.cpp
-    src/CliMode.cpp
     src/AdvancedCompressDlg.cpp
     src/RarAdvancedDlg.cpp
     src/InfoDlg.cpp

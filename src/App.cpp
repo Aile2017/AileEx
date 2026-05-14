@@ -97,7 +97,8 @@ int App::RunBrowseMode(const std::vector<std::wstring>& archivePaths, int nCmdSh
     return (int)msg.wParam;
 }
 
-int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdShow) {
+int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdShow,
+                         const std::wstring& destDir) {
     MainWindow wnd;
     if (!wnd.Create(m_hInst, nCmdShow)) return 1;
 
@@ -105,6 +106,8 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
     params.inputFiles = filePaths;
     params.outputPath = m_settings.GetDefaultOutputDir();
     params.LoadFromSettings(m_settings);
+    if (!destDir.empty())
+        params.outputPath = destDir;
 
     CompressDlg dlg;
     const auto* enc = m_sevenZip.IsLoaded() ? &m_sevenZip.GetEncoderNames() : nullptr;
@@ -164,6 +167,16 @@ int App::RunCompressMode(const std::vector<std::wstring>& filePaths, int nCmdSho
         worker.Wait();
         delete sink;
     }
+    return 0;
+}
+
+int App::RunExtractDialogMode(const std::wstring& archivePath, int nCmdShow,
+                               const std::wstring& destDir) {
+    MainWindow wnd;
+    // SW_HIDE: suppress list window; only the extract folder picker and progress dialog appear.
+    if (!wnd.Create(m_hInst, SW_HIDE)) return 1;
+    wnd.OpenArchive(archivePath.c_str());
+    wnd.TriggerExtract(destDir);
     return 0;
 }
 

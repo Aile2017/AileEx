@@ -14,6 +14,10 @@ class MainWindow {
 public:
     bool Create(HINSTANCE hInst, int nCmdShow);
     void OpenArchive(const wchar_t* path);
+    // Show the extract-destination dialog and perform extraction immediately.
+    // Called after OpenArchive when -x option is given; skips the list view entirely.
+    // presetDest: if non-empty, skip the folder picker and extract directly to this path.
+    void TriggerExtract(const std::wstring& presetDest = L"");
     HWND Hwnd() const { return m_hwnd; }
     // Call before TranslateAccelerator / IsDialogMessage in the message loop.
     // Returns true if the message was consumed.
@@ -36,7 +40,9 @@ private:
     void OnExtractSelected();
     // Common extraction driver. indices empty = extract all (7z path).
     // rarTargetPaths empty = extract all (unrar path).
-    void RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths);
+    // presetDest: if non-empty, skip the folder picker and extract directly to this path.
+    void RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths,
+                       std::wstring presetDest = L"");
     void OnContextMenu(HWND hwndFrom, int x, int y);
     void OnTest();
     void OnOpenAssoc();
@@ -74,6 +80,7 @@ private:
     bool Ensure7zLoaded(bool useUnrar = false);
     // Returns entered password, or empty string if user cancelled.
     std::wstring PromptPassword();
+    void ApplyFontToControls();
 
     HWND        m_hwnd         = nullptr;
     HWND        m_hToolbar     = nullptr;
@@ -81,9 +88,11 @@ private:
     HWND        m_hListView    = nullptr;
     HWND        m_hStatus      = nullptr;
     HIMAGELIST  m_hSysImageList = nullptr;
+    HFONT       m_hFont        = nullptr;
 
     std::wstring             m_archivePath;          // Display path (e.g. xx.001)
     std::wstring             m_effectiveArchivePath; // Operative path (differs from m_archivePath only when a split archive is auto-unwrapped)
+    std::wstring             m_password;             // Password used to open the current archive (empty if none)
     bool                     m_openedWithUnrar = false;
     bool                     m_isReadOnly      = false;  // Write operations disabled (e.g. split auto-unwrap)
     std::vector<ArchiveItem> m_items;

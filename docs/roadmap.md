@@ -72,17 +72,9 @@ OFN filter restored with `TrFilter` using `|` as NUL sentinel.
 For testing, environment variable `AILEEX_LANG=en|ja` can override OS setting.
 When adding 3rd+ languages, consider satellite DLL approach (current embedding is lightweight enough).
 
-### 6. ~~CLI execution without UI~~ — Implemented (2026-05-10)
+### 6. ~~CLI execution without UI~~ — Removed (2026-05-14)
 
-Implemented in `src/CliMode.{h,cpp}`. Subcommands `x` / `e` / `t` / `l` / `a` / `d`,
-options `-o<dir>` / `-p<password>` / `-y` / `-mx<0..9>` / `-t<format>` / `-h`.
-Progress/log use `WriteConsoleW` directly for Japanese output support. RAR path uses
-HWND_MESSAGE window + PeekMessage to wait for WM_APP_DONE.
-
-Since GUI subsystem is maintained, direct interactive cmd prompt execution returns prompt
-early and output mixes (by design). Recommended usage: `cmd /c AileEx.exe ...` or PowerShell
-`Start-Process -Wait` for synchronous execution. Separate console subsystem EXE not created
-(avoids black window on Explorer double-click).
+Removed in favor of GUI options `-x` / `-a` / `-d` which cover the intended use cases.
 
 ---
 

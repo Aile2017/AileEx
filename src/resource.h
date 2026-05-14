@@ -76,6 +76,7 @@
 #define IDC_MKDIR_1         3011
 #define IDC_MKDIR_2         3012
 #define IDC_MKDIR_3         3013
+#define IDC_FONT_NAME       3014
 
 // Info dialog controls
 #define IDC_INFO_LIST       5001
@@ -342,32 +343,3 @@
 #define IDS_ADV_NONE                    11401  // "None"
 #define IDS_ADV_DEFAULT                 11402  // "Default"
 #define IDS_ADV_NOT_SOLID               11403  // "Not solid"
-
-// --- CLI ---
-#define IDS_CLI_USAGE_FULL              11300
-#define IDS_FMT_CLI_OPEN_FAILED         11301
-#define IDS_CLI_LIST_HEADER_DATE        11302
-#define IDS_CLI_LIST_HEADER_ATTR        11303
-#define IDS_CLI_LIST_HEADER_SIZE        11304
-#define IDS_CLI_LIST_HEADER_PACKED      11305
-#define IDS_CLI_LIST_HEADER_NAME        11306
-#define IDS_FMT_CLI_LIST_SUMMARY        11307
-#define IDS_FMT_CLI_TESTING             11308
-#define IDS_CLI_DLL_NOT_LOADED          11309
-#define IDS_CLI_CANCELLED               11310
-#define IDS_FMT_CLI_TEST_FAILED         11311
-#define IDS_FMT_CLI_EXTRACTING          11312
-#define IDS_FMT_CLI_EXTRACT_FAILED      11313
-#define IDS_CLI_NO_ADD_FILES            11314
-#define IDS_CLI_CANT_DETECT_FORMAT      11315
-#define IDS_FMT_CLI_OP_TARGET_ADD       11316
-#define IDS_FMT_CLI_OP_TARGET_CREATE    11317
-#define IDS_CLI_RAR_LAUNCH_FAILED       11318
-#define IDS_CLI_7Z_NOT_LOADED           11319
-#define IDS_FMT_CLI_OP_FAILED_ADD       11320
-#define IDS_FMT_CLI_OP_FAILED_CREATE    11321
-#define IDS_CLI_NO_DELETE_PATHS         11322
-#define IDS_FMT_CLI_DELETING            11323
-#define IDS_FMT_CLI_OPEN_FAILED2        11324
-#define IDS_CLI_NO_DELETE_TARGETS       11325
-#define IDS_FMT_CLI_DELETE_FAILED       11326

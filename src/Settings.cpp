@@ -16,6 +16,7 @@ void Settings::Load() {
     m_7zDllPath        = ReadStr(L"General", L"7zDllPath",        L"");
     m_unrarDllPath     = ReadStr(L"General", L"UnrarDllPath",     L"");
     m_defaultSfxMode   = ReadStr(L"General", L"DefaultSfxMode",   L"");
+    m_fontName         = ReadStr(L"General", L"FontName",         L"Segoe UI");
 
     wchar_t buf[16] = {};
     GetPrivateProfileStringW(L"General", L"CompressionLevel", L"5", buf, 16, m_iniPath);
@@ -80,6 +81,7 @@ void Settings::Save() const {
     WriteStr(L"General", L"7zDllPath",        m_7zDllPath.c_str());
     WriteStr(L"General", L"UnrarDllPath",     m_unrarDllPath.c_str());
     WriteStr(L"General", L"DefaultSfxMode",   m_defaultSfxMode.c_str());
+    WriteStr(L"General", L"FontName",         m_fontName.c_str());
 
     wchar_t buf[16] = {};
     _itow_s(m_compressionLevel, buf, 10);

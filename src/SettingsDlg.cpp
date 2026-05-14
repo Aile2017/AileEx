@@ -68,6 +68,18 @@ void SettingsDlg::OnInit(HWND hwnd) {
     int extSel = (unrarLoaded && s.GetRarExtractor() == L"unrar") ? 1 : 0;
     SendMessageW(hExt, CB_SETCURSEL, extSel, 0);
 
+    // Font combo
+    HWND hFont = GetDlgItem(hwnd, IDC_FONT_NAME);
+    // Common font options
+    std::wstring fonts[] = {L"Segoe UI", L"Meiryo UI", L"Yu Gothic", L"Arial", L"Tahoma", L"Courier New"};
+    int fontSel = 0;
+    std::wstring currentFont = s.GetFontName();
+    for (size_t i = 0; i < 6; ++i) {
+        SendMessageW(hFont, CB_ADDSTRING, 0, (LPARAM)fonts[i].c_str());
+        if (fonts[i] == currentFont) fontSel = (int)i;
+    }
+    SendMessageW(hFont, CB_SETCURSEL, fontSel, 0);
+
     // Default output dir
     SetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, s.GetDefaultOutputDir().c_str());
 
@@ -108,6 +120,12 @@ bool SettingsDlg::OnOK(HWND hwnd) {
     HWND hExt = GetDlgItem(hwnd, IDC_RAR_EXTRACTOR);
     int  sel  = (int)SendMessageW(hExt, CB_GETCURSEL, 0, 0);
     s.SetRarExtractor(sel == 1 ? L"unrar" : L"7z");
+
+    // Font selection
+    HWND hFont = GetDlgItem(hwnd, IDC_FONT_NAME);
+    wchar_t fontBuf[64] = {};
+    GetDlgItemTextW(hwnd, IDC_FONT_NAME, fontBuf, 64);
+    s.SetFontName(fontBuf);
 
     wchar_t buf[MAX_PATH] = {};
     GetDlgItemTextW(hwnd, IDC_DEFAULT_DIR, buf, MAX_PATH);

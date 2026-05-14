@@ -69,7 +69,7 @@ END
 IDD_COMPRESS DIALOGEX 0, 0, 360, 210
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Compress"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "Output",            IDC_STATIC,     7,   4, 346,  28
     LTEXT           "File name:",        IDC_STATIC,    14,  16,  42,   8
@@ -101,7 +101,7 @@ END
 IDD_COMPRESS_ADV DIALOGEX 0, 0, 290, 215
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Advanced compression settings"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "Compression options",   IDC_STATIC,     7,   4, 276, 170
     LTEXT           "Dictionary size:",      IDC_STATIC,    14,  20,  58,   8
@@ -127,7 +127,7 @@ END
 IDD_RAR_COMPRESS_ADV DIALOGEX 0, 0, 290, 215
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "RAR advanced settings"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "RAR options",            IDC_STATIC,     7,   4, 276, 185
     LTEXT           "Dictionary size:",       IDC_STATIC,    14,  20,  58,   8
@@ -151,7 +151,7 @@ END
 IDD_PROGRESS DIALOGEX 0, 0, 300, 76
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION
 CAPTION "Working..."
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "",                IDC_PROGRESS_FILE,  7,  7, 286, 12, SS_ENDELLIPSIS | SS_NOPREFIX
     CONTROL         "",                IDC_PROGRESS_BAR, "msctls_progress32",
@@ -160,10 +160,10 @@ BEGIN
     PUSHBUTTON      "Cancel",          IDC_CANCEL,     116,  54,   68, 14
 END
 
-IDD_SETTINGS DIALOGEX 0, 0, 280, 252
+IDD_SETTINGS DIALOGEX 0, 0, 280, 288
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Settings"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "Default output directory", IDC_STATIC,     7,   4, 266,  30
     EDITTEXT        IDC_DEFAULT_DIR,    14,  16, 210,  14, ES_AUTOHSCROLL
@@ -179,25 +179,29 @@ BEGIN
     LTEXT           "Use:",              IDC_STATIC,    14, 130,  54,   8
     COMBOBOX        IDC_RAR_EXTRACTOR,  70, 128, 110, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    GROUPBOX        "Executable / DLL paths", IDC_STATIC, 7, 154, 266, 74
-    LTEXT           "7z.dll:",           IDC_STATIC,    14, 168,  30,   8
-    EDITTEXT        IDC_7Z_DLL_PATH,    46, 166, 180,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "Browse...",        IDC_BROWSE_7Z, 230, 165,  36,  15
-    LTEXT           "unrar.dll:",       IDC_STATIC,    14, 186,  30,   8
-    EDITTEXT        IDC_UNRAR_DLL_PATH, 46, 184, 180,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "Browse...",        IDC_BROWSE_UNRAR, 230, 183, 36, 15
-    LTEXT           "rar.exe:",         IDC_STATIC,    14, 204,  30,   8
-    EDITTEXT        IDC_RAR_EXE_PATH,   46, 202, 180,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "Browse...",        IDC_BROWSE_RAR, 230, 201,  36,  15
+    GROUPBOX        "Font",              IDC_STATIC,     7, 154, 266,  30
+    LTEXT           "Font:",             IDC_STATIC,    14, 168,  48,   8
+    COMBOBOX        IDC_FONT_NAME,      64, 166, 150, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    DEFPUSHBUTTON   "OK",               IDOK,          168, 232,  50,  14
-    PUSHBUTTON      "Cancel",           IDCANCEL,      222, 232,  50,  14
+    GROUPBOX        "Executable / DLL paths", IDC_STATIC, 7, 192, 266, 74
+    LTEXT           "7z.dll:",           IDC_STATIC,    14, 206,  30,   8
+    EDITTEXT        IDC_7Z_DLL_PATH,    46, 204, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",        IDC_BROWSE_7Z, 230, 203,  36,  15
+    LTEXT           "unrar.dll:",       IDC_STATIC,    14, 224,  30,   8
+    EDITTEXT        IDC_UNRAR_DLL_PATH, 46, 222, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",        IDC_BROWSE_UNRAR, 230, 221, 36, 15
+    LTEXT           "rar.exe:",         IDC_STATIC,    14, 242,  30,   8
+    EDITTEXT        IDC_RAR_EXE_PATH,   46, 240, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse...",        IDC_BROWSE_RAR, 230, 239,  36,  15
+
+    DEFPUSHBUTTON   "OK",               IDOK,          168, 268,  50,  14
+    PUSHBUTTON      "Cancel",           IDCANCEL,      222, 268,  50,  14
 END
 
 IDD_INFO DIALOGEX 0, 0, 340, 280
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "File info"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     CONTROL         "", IDC_INFO_LIST, "SysListView32",
                     LVS_REPORT | LVS_NOSORTHEADER | LVS_SINGLESEL |
@@ -209,7 +213,7 @@ END
 IDD_COMMENT DIALOGEX 0, 0, 360, 220
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Archive comment"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_COMMENT_EDIT, 7, 7, 346, 190,
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN |
@@ -221,7 +225,7 @@ END
 IDD_ARCHIVE_PROPS DIALOGEX 0, 0, 380, 320
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Archive properties"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     CONTROL         "", IDC_ARCPROP_LIST, "SysListView32",
                     LVS_REPORT | LVS_NOSORTHEADER | LVS_SINGLESEL |
@@ -233,7 +237,7 @@ END
 IDD_PASSWORD DIALOGEX 0, 0, 220, 72
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Password"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "Enter password:", IDC_STATIC, 10, 10, 200, 12
     EDITTEXT        IDC_PASSWORD_INPUT, 10, 26, 200, 14, ES_AUTOHSCROLL | ES_PASSWORD
@@ -244,7 +248,7 @@ END
 IDD_ABOUT DIALOGEX 0, 0, 300, 170
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     ICON            IDI_AILEEX,     IDC_STATIC,         12,  12,  20,  20
     LTEXT           "AileEx Archive Manager", IDC_ABOUT_TITLE, 44, 14, 240, 14
@@ -464,36 +468,6 @@ BEGIN
     IDS_ADV_NOT_SOLID               "Not solid"
 END
 
-STRINGTABLE
-BEGIN
-    IDS_CLI_USAGE_FULL              "AileEx CLI mode\n\nUsage:\n  AileEx.exe <command> <archive> [target...] [options]\n\nCommands:\n  x   Extract with paths\n  e   Extract flattened (paths ignored)\n  t   Test integrity\n  l   List contents\n  a   Add files / create archive (creates if archive is missing)\n  d   Delete specified paths from archive\n\nOptions:\n  -o<dir>      Output directory (x/e only; default: current)\n  -p<password> Password\n  -y           Skip overwrite confirmation\n  -mx<0..9>    Compression level (a only; default 5; 0=store .. 9=ultra)\n  -t<format>   Output format (a only; default: detect from extension)\n               e.g.: 7z, zip, tar, gz, bz2, xz, rar\n  -h, --help   Show this help\n\nExit codes:\n  0   Success\n  2   Fatal error\n  7   Argument error\n  255 Cancelled by user (Ctrl+C)\n\nExamples:\n"
-    IDS_FMT_CLI_OPEN_FAILED         "Could not open archive: %ls (HRESULT=0x%08X)\n"
-    IDS_CLI_LIST_HEADER_DATE        "Date"
-    IDS_CLI_LIST_HEADER_ATTR        "Attr"
-    IDS_CLI_LIST_HEADER_SIZE        "Size"
-    IDS_CLI_LIST_HEADER_PACKED      "Packed"
-    IDS_CLI_LIST_HEADER_NAME        "Name"
-    IDS_FMT_CLI_LIST_SUMMARY        "%-19ls  %-5ls  %12llu  %12llu  %u file(s) / %u folder(s)\n"
-    IDS_FMT_CLI_TESTING             "Testing: %ls\n"
-    IDS_CLI_DLL_NOT_LOADED          "7z.dll / unrar.dll is not loaded.\n"
-    IDS_CLI_CANCELLED               "Cancelled\n"
-    IDS_FMT_CLI_TEST_FAILED         "Test failed (HRESULT=0x%08X)\n"
-    IDS_FMT_CLI_EXTRACTING          "Extracting: %ls -> %ls\n"
-    IDS_FMT_CLI_EXTRACT_FAILED      "Extraction failed (HRESULT=0x%08X)\n"
-    IDS_CLI_NO_ADD_FILES            "a: no files specified to add\n"
-    IDS_CLI_CANT_DETECT_FORMAT      "Cannot detect output format. Specify it with -t<format>.\n"
-    IDS_FMT_CLI_OP_TARGET_ADD       "Adding to: %ls\n"
-    IDS_FMT_CLI_OP_TARGET_CREATE    "Creating: %ls\n"
-    IDS_CLI_RAR_LAUNCH_FAILED       "Failed to launch rar.exe\n"
-    IDS_CLI_7Z_NOT_LOADED           "7z.dll is not loaded\n"
-    IDS_FMT_CLI_OP_FAILED_ADD       "Add failed (HRESULT=0x%08X)\n"
-    IDS_FMT_CLI_OP_FAILED_CREATE    "Create failed (HRESULT=0x%08X)\n"
-    IDS_CLI_NO_DELETE_PATHS         "d: no paths specified to delete\n"
-    IDS_FMT_CLI_DELETING            "Deleting: %ls\n"
-    IDS_FMT_CLI_OPEN_FAILED2        "Could not open archive (HRESULT=0x%08X)\n"
-    IDS_CLI_NO_DELETE_TARGETS       "Delete target was not found in the archive\n"
-    IDS_FMT_CLI_DELETE_FAILED       "Delete failed (HRESULT=0x%08X)\n"
-END
 
 
 /////////////////////////////////////////////////////////////////
@@ -546,7 +520,7 @@ END
 IDD_COMPRESS DIALOGEX 0, 0, 360, 210
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "圧縮"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "出力先",          IDC_STATIC,     7,   4, 346,  28
     LTEXT           "ファイル名:",      IDC_STATIC,    14,  16,  42,   8
@@ -578,7 +552,7 @@ END
 IDD_COMPRESS_ADV DIALOGEX 0, 0, 290, 215
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "詳細圧縮設定"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "圧縮オプション",        IDC_STATIC,     7,   4, 276, 170
     LTEXT           "辞書サイズ:",           IDC_STATIC,    14,  20,  58,   8
@@ -604,7 +578,7 @@ END
 IDD_RAR_COMPRESS_ADV DIALOGEX 0, 0, 290, 215
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "RAR詳細設定"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "RARオプション",          IDC_STATIC,     7,   4, 276, 185
     LTEXT           "辞書サイズ:",             IDC_STATIC,    14,  20,  58,   8
@@ -628,7 +602,7 @@ END
 IDD_PROGRESS DIALOGEX 0, 0, 300, 76
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION
 CAPTION "処理中..."
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "",                IDC_PROGRESS_FILE,  7,  7, 286, 12, SS_ENDELLIPSIS | SS_NOPREFIX
     CONTROL         "",                IDC_PROGRESS_BAR, "msctls_progress32",
@@ -637,10 +611,10 @@ BEGIN
     PUSHBUTTON      "キャンセル",       IDC_CANCEL,     116,  54,   68, 14
 END
 
-IDD_SETTINGS DIALOGEX 0, 0, 280, 252
+IDD_SETTINGS DIALOGEX 0, 0, 280, 288
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "設定"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     GROUPBOX        "デフォルト出力先",  IDC_STATIC,     7,   4, 266,  30
     EDITTEXT        IDC_DEFAULT_DIR,    14,  16, 210,  14, ES_AUTOHSCROLL
@@ -656,25 +630,29 @@ BEGIN
     LTEXT           "展開に使用:",       IDC_STATIC,    14, 130,  54,   8
     COMBOBOX        IDC_RAR_EXTRACTOR,  70, 128, 110, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    GROUPBOX        "実行ファイル・DLL パス", IDC_STATIC, 7, 154, 266, 74
-    LTEXT           "7z.dll:",           IDC_STATIC,    14, 168,  30,   8
-    EDITTEXT        IDC_7Z_DLL_PATH,    46, 166, 180,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "参照...",               IDC_BROWSE_7Z, 230, 165,  36,  15
-    LTEXT           "unrar.dll:",        IDC_STATIC,    14, 186,  30,   8
-    EDITTEXT        IDC_UNRAR_DLL_PATH, 46, 184, 180,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "参照...",               IDC_BROWSE_UNRAR, 230, 183, 36, 15
-    LTEXT           "rar.exe:",          IDC_STATIC,    14, 204,  30,   8
-    EDITTEXT        IDC_RAR_EXE_PATH,   46, 202, 180,  14, ES_AUTOHSCROLL
-    PUSHBUTTON      "参照...",               IDC_BROWSE_RAR, 230, 201,  36,  15
+    GROUPBOX        "フォント",          IDC_STATIC,     7, 154, 266,  30
+    LTEXT           "フォント:",         IDC_STATIC,    14, 168,  48,   8
+    COMBOBOX        IDC_FONT_NAME,      64, 166, 150, 100, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
 
-    DEFPUSHBUTTON   "OK",               IDOK,          168, 232,  50,  14
-    PUSHBUTTON      "キャンセル",        IDCANCEL,      222, 232,  50,  14
+    GROUPBOX        "実行ファイル・DLL パス", IDC_STATIC, 7, 192, 266, 74
+    LTEXT           "7z.dll:",           IDC_STATIC,    14, 206,  30,   8
+    EDITTEXT        IDC_7Z_DLL_PATH,    46, 204, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "参照...",               IDC_BROWSE_7Z, 230, 203,  36,  15
+    LTEXT           "unrar.dll:",        IDC_STATIC,    14, 224,  30,   8
+    EDITTEXT        IDC_UNRAR_DLL_PATH, 46, 222, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "参照...",               IDC_BROWSE_UNRAR, 230, 221, 36, 15
+    LTEXT           "rar.exe:",          IDC_STATIC,    14, 242,  30,   8
+    EDITTEXT        IDC_RAR_EXE_PATH,   46, 240, 180,  14, ES_AUTOHSCROLL
+    PUSHBUTTON      "参照...",               IDC_BROWSE_RAR, 230, 239,  36,  15
+
+    DEFPUSHBUTTON   "OK",               IDOK,          168, 268,  50,  14
+    PUSHBUTTON      "キャンセル",        IDCANCEL,      222, 268,  50,  14
 END
 
 IDD_INFO DIALOGEX 0, 0, 340, 280
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "ファイル情報"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     CONTROL         "", IDC_INFO_LIST, "SysListView32",
                     LVS_REPORT | LVS_NOSORTHEADER | LVS_SINGLESEL |
@@ -686,7 +664,7 @@ END
 IDD_COMMENT DIALOGEX 0, 0, 360, 220
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "アーカイブのコメント"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     EDITTEXT        IDC_COMMENT_EDIT, 7, 7, 346, 190,
                     ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN |
@@ -698,7 +676,7 @@ END
 IDD_ARCHIVE_PROPS DIALOGEX 0, 0, 380, 320
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "アーカイブのプロパティ"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     CONTROL         "", IDC_ARCPROP_LIST, "SysListView32",
                     LVS_REPORT | LVS_NOSORTHEADER | LVS_SINGLESEL |
@@ -710,7 +688,7 @@ END
 IDD_PASSWORD DIALOGEX 0, 0, 220, 72
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "パスワード"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     LTEXT           "パスワードを入力してください:", IDC_STATIC, 10, 10, 200, 12
     EDITTEXT        IDC_PASSWORD_INPUT, 10, 26, 200, 14, ES_AUTOHSCROLL | ES_PASSWORD
@@ -721,7 +699,7 @@ END
 IDD_ABOUT DIALOGEX 0, 0, 300, 170
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "バージョン情報"
-FONT 9, "MS Shell Dlg", 400, 0, 0x1
+FONT 9, "Segoe UI", 400, 0, 0x1
 BEGIN
     ICON            IDI_AILEEX,     IDC_STATIC,         12,  12,  20,  20
     LTEXT           "AileEx Archive Manager", IDC_ABOUT_TITLE, 44, 14, 240, 14
@@ -941,33 +919,3 @@ BEGIN
     IDS_ADV_NOT_SOLID               "非ソリッド"
 END
 
-STRINGTABLE
-BEGIN
-    IDS_CLI_USAGE_FULL              "AileEx CLI モード\n\n使い方:\n  AileEx.exe <コマンド> <アーカイブ> [対象...] [オプション]\n\nコマンド:\n  x   全展開（パス保持）\n  e   全展開（パス無視・フラット展開）\n  t   整合性検証\n  l   内容一覧\n  a   ファイル追加・新規作成（既存なら追加、無ければ新規作成）\n  d   指定パスをアーカイブから削除\n\nオプション:\n  -o<dir>      出力先ディレクトリ（x/e のみ。既定: カレント）\n  -p<password> パスワード\n  -y           上書き確認をスキップ\n  -mx<0..9>    圧縮レベル（a 用。既定 5。0=無圧縮〜9=最大）\n  -t<format>   出力形式の明示指定（a 用。既定: 拡張子から判定）\n               例: 7z, zip, tar, gz, bz2, xz, rar\n  -h, --help   この使い方を表示\n\n終了コード:\n  0   成功\n  2   致命的エラー\n  7   引数エラー\n  255 ユーザがキャンセル (Ctrl+C)\n\n例:\n"
-    IDS_FMT_CLI_OPEN_FAILED         "アーカイブを開けませんでした: %ls (HRESULT=0x%08X)\n"
-    IDS_CLI_LIST_HEADER_DATE        "日時"
-    IDS_CLI_LIST_HEADER_ATTR        "属性"
-    IDS_CLI_LIST_HEADER_SIZE        "サイズ"
-    IDS_CLI_LIST_HEADER_PACKED      "圧縮後"
-    IDS_CLI_LIST_HEADER_NAME        "名前"
-    IDS_FMT_CLI_LIST_SUMMARY        "%-19ls  %-5ls  %12llu  %12llu  ファイル %u 個 / フォルダ %u 個\n"
-    IDS_FMT_CLI_TESTING             "検証中: %ls\n"
-    IDS_CLI_DLL_NOT_LOADED          "7z.dll / unrar.dll が読み込まれていません。\n"
-    IDS_CLI_CANCELLED               "キャンセルされました\n"
-    IDS_FMT_CLI_TEST_FAILED         "検証失敗 (HRESULT=0x%08X)\n"
-    IDS_FMT_CLI_EXTRACTING          "展開中: %ls → %ls\n"
-    IDS_FMT_CLI_EXTRACT_FAILED      "展開失敗 (HRESULT=0x%08X)\n"
-    IDS_CLI_NO_ADD_FILES            "a: 追加するファイルが指定されていません\n"
-    IDS_CLI_CANT_DETECT_FORMAT      "出力形式を判定できません。-t<format> で明示してください。\n"
-    IDS_FMT_CLI_OP_TARGET_ADD       "追加中: %ls\n"
-    IDS_FMT_CLI_OP_TARGET_CREATE    "作成中: %ls\n"
-    IDS_CLI_RAR_LAUNCH_FAILED       "rar.exe の起動に失敗しました\n"
-    IDS_CLI_7Z_NOT_LOADED           "7z.dll が読み込まれていません\n"
-    IDS_FMT_CLI_OP_FAILED_ADD       "追加失敗 (HRESULT=0x%08X)\n"
-    IDS_FMT_CLI_OP_FAILED_CREATE    "作成失敗 (HRESULT=0x%08X)\n"
-    IDS_CLI_NO_DELETE_PATHS         "d: 削除するパスが指定されていません\n"
-    IDS_FMT_CLI_DELETING            "削除中: %ls\n"
-    IDS_FMT_CLI_OPEN_FAILED2        "アーカイブを開けませんでした (HRESULT=0x%08X)\n"
-    IDS_CLI_NO_DELETE_TARGETS       "削除対象がアーカイブ内に見つかりませんでした\n"
-    IDS_FMT_CLI_DELETE_FAILED       "削除失敗 (HRESULT=0x%08X)\n"
-END

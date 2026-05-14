@@ -161,6 +161,7 @@ void MainWindow::OpenArchive(const wchar_t* path) {
     m_archivePath = path;
     m_effectiveArchivePath = path;
     m_isReadOnly = false;
+    m_password.clear();
     m_items.clear();
 
     App& app = App::Instance();
@@ -229,6 +230,8 @@ void MainWindow::OpenArchive(const wchar_t* path) {
                     }
                 }
             }
+            if (SUCCEEDED(hr))
+                m_password = pw;
         }
     }
 
@@ -466,6 +469,8 @@ LRESULT MainWindow::HandleMsg(UINT msg, WPARAM wp, LPARAM lp) {
             _wcsicmp(m_effectiveArchivePath.c_str(), m_archivePath.c_str()) != 0) {
             DeleteFileW(m_effectiveArchivePath.c_str());
         }
+        // Clean up font
+        if (m_hFont) DeleteObject(m_hFont);
         PostQuitMessage(0);
         return 0;
     }
@@ -490,6 +495,7 @@ static LRESULT CALLBACK ChildDropForwardProc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
 void MainWindow::OnCreate(HWND hwnd) {
     CreateControls(hwnd);
+    ApplyFontToControls();
     DragAcceptFiles(hwnd, TRUE);
     if (m_hListView) {
         DragAcceptFiles(m_hListView, TRUE);
@@ -660,6 +666,23 @@ void MainWindow::ResizePanes(int cx, int cy) {
     }
 }
 
+void MainWindow::ApplyFontToControls() {
+    if (m_hFont) DeleteObject(m_hFont);
+
+    const std::wstring& fontName = App::Instance().GetSettings().GetFontName();
+    m_hFont = CreateFontW(-12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+                          DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                          CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE,
+                          fontName.c_str());
+
+    if (m_hFont) {
+        if (m_hTreeView)  SendMessageW(m_hTreeView,  WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hListView)  SendMessageW(m_hListView,  WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hToolbar)   SendMessageW(m_hToolbar,   WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hStatus)    SendMessageW(m_hStatus,    WM_SETFONT, (WPARAM)m_hFont, FALSE);
+    }
+}
+
 // ---- Drag-and-drop ----
 
 void MainWindow::OnDropFiles(HDROP hDrop) {
@@ -766,6 +789,7 @@ void MainWindow::OnCommand(WORD id) {
     case ID_SETTINGS_DLG: {
         SettingsDlg dlg;
         dlg.Show(m_hwnd);
+        ApplyFontToControls();
         break;
     }
     case ID_CLOSE:
@@ -961,6 +985,11 @@ void MainWindow::OnExtract() {
     RunExtraction({}, {});
 }
 
+void MainWindow::TriggerExtract(const std::wstring& presetDest) {
+    if (m_items.empty()) return;
+    RunExtraction({}, {}, presetDest);
+}
+
 void MainWindow::OnExtractSelected() {
     if (m_archivePath.empty()) return;
 
@@ -1007,14 +1036,35 @@ void MainWindow::OnExtractSelected() {
     RunExtraction(std::move(indices), std::move(rarTargetPaths));
 }
 
-void MainWindow::RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths) {
+void MainWindow::RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths,
+                               std::wstring presetDest) {
     App& app = App::Instance();
     bool useUnrar = m_openedWithUnrar;
 
     if (!Ensure7zLoaded(useUnrar)) return;
 
+    // If password not yet known, check whether target items are encrypted and prompt.
+    if (m_password.empty()) {
+        bool needPw = false;
+        if (indices.empty()) {
+            for (const auto& it : m_items)
+                if (it.encrypted) { needPw = true; break; }
+        } else {
+            for (UINT32 idx : indices)
+                if (idx < m_items.size() && m_items[idx].encrypted) { needPw = true; break; }
+        }
+        if (needPw) {
+            m_password = PromptPassword();
+            if (m_password.empty()) return;
+        }
+    }
+
     wchar_t destDir[MAX_PATH] = {};
-    if (!BrowseFolderDialog(m_hwnd, IDS_TITLE_SELECT_DEST_FOLDER, destDir, MAX_PATH)) return;
+    if (!presetDest.empty()) {
+        wcsncpy_s(destDir, presetDest.c_str(), MAX_PATH - 1);
+    } else if (!BrowseFolderDialog(m_hwnd, IDS_TITLE_SELECT_DEST_FOLDER, destDir, MAX_PATH)) {
+        return;
+    }
 
     // Evaluate MkDir policy based on full archive structure
     std::wstring finalDest = destDir;
@@ -1033,26 +1083,30 @@ void MainWindow::RunExtraction(std::vector<UINT32> indices, std::set<std::wstrin
 
     auto archivePath = m_effectiveArchivePath;
 
+    std::wstring password = m_password;
     if (useUnrar) {
         auto& unrar = app.GetUnrar();
         if (rarTargetPaths.empty()) {
-            m_worker.Start([&unrar, archivePath, destDir = finalDest, sink]() -> HRESULT {
+            m_worker.Start([&unrar, archivePath, destDir = finalDest, password, sink]() -> HRESULT {
                 SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
-                bool ok = unrar.ExtractArchive(archivePath.c_str(), destDir.c_str(), nullptr, sink);
+                const wchar_t* pw = password.empty() ? nullptr : password.c_str();
+                bool ok = unrar.ExtractArchive(archivePath.c_str(), destDir.c_str(), pw, sink);
                 return ok ? S_OK : E_FAIL;
             }, m_hwnd, WM_APP_DONE);
         } else {
-            m_worker.Start([&unrar, archivePath, destDir = finalDest, rarTargetPaths, sink]() -> HRESULT {
+            m_worker.Start([&unrar, archivePath, destDir = finalDest, rarTargetPaths, password, sink]() -> HRESULT {
                 SHCreateDirectoryExW(nullptr, destDir.c_str(), nullptr);
+                const wchar_t* pw = password.empty() ? nullptr : password.c_str();
                 bool ok = unrar.ExtractArchiveSelected(archivePath.c_str(), destDir.c_str(),
-                                                       rarTargetPaths, nullptr, sink);
+                                                       rarTargetPaths, pw, sink);
                 return ok ? S_OK : E_FAIL;
             }, m_hwnd, WM_APP_DONE);
         }
     } else {
         auto& sz = app.Get7z();
-        m_worker.Start([&sz, archivePath, indices, destDir = finalDest, sink]() -> HRESULT {
-            return sz.Extract(archivePath.c_str(), indices, destDir.c_str(), nullptr, sink);
+        m_worker.Start([&sz, archivePath, indices, destDir = finalDest, password, sink]() -> HRESULT {
+            const wchar_t* pw = password.empty() ? nullptr : password.c_str();
+            return sz.Extract(archivePath.c_str(), indices, destDir.c_str(), pw, sink);
         }, m_hwnd, WM_APP_DONE);
     }
 
@@ -1121,15 +1175,18 @@ void MainWindow::OnTest() {
 
     auto archivePath = m_effectiveArchivePath;
 
+    std::wstring password = m_password;
     if (useUnrar) {
         auto& unrar = app.GetUnrar();
-        m_worker.Start([&unrar, archivePath, sink]() -> HRESULT {
-            return unrar.TestArchive(archivePath.c_str(), nullptr, sink) ? S_OK : E_FAIL;
+        m_worker.Start([&unrar, archivePath, password, sink]() -> HRESULT {
+            const wchar_t* pw = password.empty() ? nullptr : password.c_str();
+            return unrar.TestArchive(archivePath.c_str(), pw, sink) ? S_OK : E_FAIL;
         }, m_hwnd, WM_APP_DONE);
     } else {
         auto& sz = app.Get7z();
-        m_worker.Start([&sz, archivePath, sink]() -> HRESULT {
-            return sz.Test(archivePath.c_str(), nullptr, sink);
+        m_worker.Start([&sz, archivePath, password, sink]() -> HRESULT {
+            const wchar_t* pw = password.empty() ? nullptr : password.c_str();
+            return sz.Test(archivePath.c_str(), pw, sink);
         }, m_hwnd, WM_APP_DONE);
     }
 
@@ -2246,7 +2303,8 @@ void MainWindow::ShowError(const wchar_t* msg, HRESULT hr) {
         swprintf_s(hrStr, L"  (0x%08X)", (unsigned)hr);
         text += hrStr;
     }
-    MessageBoxW(m_hwnd, text.c_str(), L"AileEx", MB_ICONERROR);
+    HWND parent = IsWindowVisible(m_hwnd) ? m_hwnd : nullptr;
+    MessageBoxW(parent, text.c_str(), L"AileEx", MB_ICONERROR);
 }
 
 bool MainWindow::Ensure7zLoaded(bool useUnrar) {
@@ -2282,9 +2340,10 @@ std::wstring MainWindow::PromptPassword() {
         }
     };
     PwDlg dlg;
+    HWND parent = IsWindowVisible(m_hwnd) ? m_hwnd : nullptr;
     INT_PTR res = DialogBoxParamW(
         GetModuleHandleW(nullptr),
         MAKEINTRESOURCEW(IDD_PASSWORD),
-        m_hwnd, PwDlg::Proc, (LPARAM)&dlg);
+        parent, PwDlg::Proc, (LPARAM)&dlg);
     return (res == IDOK) ? dlg.result : L"";
 }

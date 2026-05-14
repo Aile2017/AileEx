@@ -56,6 +56,10 @@ cmake --build build_release
 | Archive file | Browse mode — open the archive and display its contents |
 | Regular file | Compress mode — show the compression dialog |
 | Mixed | Compress mode takes priority |
+| `-x <archive>` | Forced extract mode — show extract destination dialog directly (skip list view) |
+| `-x <archive> -d <dir>` | Same, but extract directly to `<dir>` (skip destination dialog too) |
+| `-a <file...>` | Forced compress mode — show compression dialog directly |
+| `-a <file...> -d <dir>` | Same, but preset the output directory to `<dir>` in the compression dialog |
 
 Extensions recognized as archives: `7z`, `zip`, `rar`, `tar`, `gz`, `bz2`, `xz`, `cab`, `iso`, `jar`, `wim`, `lzma`, `lzh`, `arj`
 

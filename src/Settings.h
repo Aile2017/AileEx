@@ -89,6 +89,9 @@ public:
     const std::wstring& GetUnrarDllPath() const     { return m_unrarDllPath; }
     void SetUnrarDllPath(const wchar_t* v)          { m_unrarDllPath = v; }
 
+    const std::wstring& GetFontName() const         { return m_fontName; }
+    void SetFontName(const wchar_t* v)              { m_fontName = v; }
+
     // MRU (recently used archives) — head is most recent; duplicates removed case-insensitively.
     const std::vector<std::wstring>& GetMruPaths() const { return m_mruPaths; }
     void AddMru(const std::wstring& path);
@@ -128,6 +131,7 @@ private:
     bool         m_toolbarVisible;
     std::wstring m_7zDllPath;
     std::wstring m_unrarDllPath;
+    std::wstring m_fontName;
     std::vector<std::wstring> m_mruPaths;
 
     std::wstring ReadStr(const wchar_t* section, const wchar_t* key, const wchar_t* def) const;
