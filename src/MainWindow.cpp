@@ -1467,12 +1467,12 @@ void MainWindow::RebuildMruMenu() {
                     I18n::Tr(IDS_MRU_NO_HISTORY).c_str());
     } else {
         for (size_t i = 0; i < mru.size(); ++i) {
-            // First 9 show accelerators &1..&9. 10+ indent-aligned.
+            // First 9 show accelerators &1..&9. 10th shows the number without a mnemonic.
             wchar_t prefix[8];
             if (i < 9)
                 swprintf_s(prefix, L"&%zu  ", i + 1);
             else
-                swprintf_s(prefix, L"     ");
+                swprintf_s(prefix, L"&10 ");
             // & is underlined in menus, so double-escape it
             std::wstring label = prefix;
             for (wchar_t c : mru[i]) {
