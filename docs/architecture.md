@@ -10,7 +10,10 @@ AileEx/
 │   ├── specification.md
 │   ├── architecture.md
 │   ├── build.md
-│   └── known-issues.md
+│   ├── known-issues.md
+│   ├── roadmap.md
+│   ├── compress-extra-params.md  — 7z/ZIP ISetProperties key=value parameter reference
+│   └── rar-extra-params.md       — rar.exe switch reference for RAR compression
 ├── src/
 │   ├── main.cpp                   — wWinMain, argument parsing, mode routing
 │   ├── App.h/.cpp                 — Singleton, DLL load management, message loop
@@ -22,11 +25,14 @@ AileEx/
 │   ├── ProgressDlg.h/.cpp         — Modal progress dialog
 │   ├── SettingsDlg.h/.cpp         — Settings dialog
 │   ├── InfoDlg.h/.cpp             — Entry details display dialog
+│   ├── PropertiesDlg.h/.cpp       — Archive-wide properties dialog
+│   ├── CommentDlg.h/.cpp          — Archive comment view/edit dialog
 │   ├── Settings.h/.cpp            — INI read/write, MRU management
 │   ├── SevenZip.h/.cpp            — 7z.dll wrapper (IIn/IOutArchive + DeleteItems + callbacks + Find7zDll)
 │   ├── UnrarDll.h/.cpp            — unrar.dll C API wrapper
 │   ├── RarProcess.h/.cpp          — WinRAR.exe (GUI) / Rar.exe (console) subprocess (Compress / Delete)
 │   ├── ArchiveItem.h              — Archive entry POD struct
+│   ├── I18n.h/.cpp                — Localized string loading (en-US / ja-JP via SetProcessPreferredUILanguages)
 │   ├── WorkerThread.h/.cpp        — Worker thread + IExtractProgressSink + ProgressPostSink
 │   └── resource.h                 — Resource IDs, WM_APP_* constants
 ├── res/
@@ -97,6 +103,8 @@ AileEx/
 | `IDD_PROGRESS` | `ProgressDlg` — Modal progress |
 | `IDD_SETTINGS` | `SettingsDlg` — Settings |
 | `IDD_INFO` | `InfoDlg` — Entry details |
+| `IDD_ARCHIVE_PROPS` | `PropertiesDlg` — Archive-wide properties (format, method, size, encryption etc.) |
+| `IDD_COMMENT` | `CommentDlg` — Archive comment view/edit |
 | `IDD_PASSWORD` | Password input (auto-shown when opening encrypted archive) |
 | `IDD_ABOUT` | About dialog |
 | `IDR_MAIN_MENU` | Main window menu bar |

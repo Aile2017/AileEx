@@ -56,6 +56,7 @@ Recognized extensions (treated as archives): `7z`, `zip`, `rar`, `tar`, `gz`, `b
 |---|---|---|---|
 | File | Open... `Ctrl+O` | `IDM_FILE_OPEN` | `IFileOpenDialog` |
 | | Recent Archives | `IDM_FILE_MRU_BASE..LAST` | Max 10 items, `&1..&9` mnemonics |
+| | Archive properties `Alt+Enter` | `IDM_FILE_PROPERTIES` | Archive-wide properties dialog (`IDD_ARCHIVE_PROPS`) |
 | | Close `Ctrl+F4` | `ID_CLOSE` | Close archive (not exit app) |
 | | Exit `Esc` | `IDM_FILE_EXIT` | Exit application |
 | Actions | Extract... `F5` | `ID_EXTRACT` | Extract all entries |
@@ -66,6 +67,7 @@ Recognized extensions (treated as archives): `7z`, `zip`, `rar`, `tar`, `gz`, `b
 | | Open with Association `Enter` | `ID_OPEN_ASSOC` | Extract temp then `ShellExecute` |
 | | Delete `Del` | `ID_DELETE` | 7z uses `IOutArchive`, RAR uses `rar d` |
 | | Info | `ID_INFO` | Selected entry details |
+| | Archive comment... | `ID_ARCHIVE_COMMENT` | View/edit whole-archive comment (`IDD_COMMENT`) |
 | | Settings... | `ID_SETTINGS_DLG` | |
 | View | Toolbar | `IDM_VIEW_TOOLBAR` | Toggle checkbox |
 | | Tree View | `IDM_VIEW_TREE` | Toggle checkbox |
@@ -198,6 +200,18 @@ Folder selection uses Explorer-style dialog (`IFileOpenDialog + FOS_PICKFOLDERS`
 
 Select file in ListView and open **Menu → Info** or right-click → Info to display detailed information about selected entry (path, size, compressed size, method, modified time, etc.).
 
+### Archive Properties Dialog (`IDD_ARCHIVE_PROPS`)
+
+Opened via **File → Archive properties** (`Alt+Enter`). Displays archive-wide properties retrieved via `IInArchive::GetArchiveProperty` (for 7z.dll backend) or derived from entry list (for unrar.dll backend). Shows format, method, solid flag, number of files/folders, total size, packed size, encryption, and any format-specific properties. Class: `PropertiesDlg`.
+
+### Archive Comment Dialog (`IDD_COMMENT`)
+
+Opened via **Actions → Archive comment...**. Displays and optionally edits the whole-archive comment.
+- **ZIP**: read via `SevenZip::GetArchiveComment`, write via `SevenZip::SetZipArchiveComment` (direct EOCD rewrite). ZIP comments are encoded in OEM code page (CP_OEMCP) to match 7-Zip's ZIP handler interpretation.
+- **RAR**: read via `UnrarDll::GetArchiveComment`, write via `RarProcess::SetComment` (`rar.exe c -z<tempfile>`). RAR5 = UTF-8, RAR4 = OEM code page auto-fallback.
+- **7z format**: no archive-wide comment in spec; write path not available.
+- The dialog is **read-only** for formats that do not support comment writing. Class: `CommentDlg`.
+
 ### About Dialog (`IDD_ABOUT`)
 
 Displayed via **Help → About**. Shows title / version / links / credits.
@@ -217,10 +231,12 @@ In both cases `m_password` is cleared each time a new archive is opened.
 |---|---|---|
 | F5 / Ctrl+E | `ID_EXTRACT` | Extract |
 | Ctrl+A | `ID_ADD` | Add file (compress) |
+| Ctrl+U | `ID_ADD_TO_CURRENT` | Add to current archive |
 | Ctrl+O | `IDM_FILE_OPEN` | Open archive |
 | Ctrl+T | `ID_TEST` | Integrity test |
 | Del | `ID_DELETE` | Delete entry |
 | Ctrl+F4 | `ID_CLOSE` | Close archive (not exit app) |
+| Alt+Enter | `IDM_FILE_PROPERTIES` | Archive properties |
 | Enter | (in ListView) | Navigate folder / `ID_OPEN_ASSOC` |
 | Esc | `IDM_FILE_EXIT` | Exit app |
 
