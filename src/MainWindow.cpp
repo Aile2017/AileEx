@@ -633,10 +633,11 @@ void MainWindow::CreateControls(HWND hwnd) {
     struct ColDef { UINT nameId; int width; };
     const ColDef cols[] = {
         {IDS_COL_NAME,     220},
-        {IDS_COL_SIZE,     90},
-        {IDS_COL_PACKED,   90},
-        {IDS_COL_TYPE,     80},
-        {IDS_COL_MODIFIED, 140},
+        {IDS_COL_SIZE,      90},
+        {IDS_COL_PACKED,    90},
+        {IDS_COL_RATIO,     55},
+        {IDS_COL_TYPE,      80},
+        {IDS_COL_MODIFIED, 160},
     };
     for (int i = 0; i < (int)_countof(cols); ++i) {
         std::wstring name = I18n::Tr(cols[i].nameId);
@@ -1198,10 +1199,14 @@ void MainWindow::OnContextMenu(HWND /*hwndFrom*/, int x, int y) {
     AppendMenuW(hMenu, MF_STRING | (!readOnly && selCount > 0 ? MF_ENABLED : MF_GRAYED),
                 ID_DELETE, sDelete.c_str());
 
-    // When called from keyboard (x==-1, y==-1), use cursor position
+    // When called from keyboard (x==-1, y==-1), position near the focused ListView item
     if (x == -1 && y == -1) {
-        POINT pt = {};
-        GetCursorPos(&pt);
+        int focused = ListView_GetNextItem(m_hListView, -1, LVNI_FOCUSED);
+        if (focused < 0) focused = 0;
+        RECT rc = {};
+        ListView_GetItemRect(m_hListView, focused, &rc, LVIR_BOUNDS);
+        POINT pt = { rc.left, rc.bottom };
+        ClientToScreen(m_hListView, &pt);
         x = pt.x; y = pt.y;
     }
 
@@ -2133,9 +2138,10 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
         ListView_InsertItem(m_hListView, &lvi);
         ListView_SetItemText(m_hListView, row, 1, const_cast<wchar_t*>(L""));
         ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(L""));
         std::wstring folderType = I18n::Tr(IDS_TYPE_FOLDER);
-        ListView_SetItemText(m_hListView, row, 3, folderType.data());
-        ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 4, folderType.data());
+        ListView_SetItemText(m_hListView, row, 5, const_cast<wchar_t*>(L""));
     }
 
     // Collect items belonging to this folder, split into dirs and files
@@ -2168,10 +2174,17 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
         case 2: // Compressed
             result = (a.it->packedSize < b.it->packedSize) ? -1 : (a.it->packedSize > b.it->packedSize) ? 1 : 0;
             break;
-        case 3: // Type
+        case 3: // Ratio
+            {
+                double ra = a.it->size ? (double)a.it->packedSize / a.it->size : 0.0;
+                double rb = b.it->size ? (double)b.it->packedSize / b.it->size : 0.0;
+                result = (ra < rb) ? -1 : (ra > rb) ? 1 : 0;
+            }
+            break;
+        case 4: // Type
             result = _wcsicmp(a.it->method.c_str(), b.it->method.c_str());
             break;
-        case 4: // Modified
+        case 5: // Modified
             result = CompareFileTime(&a.it->mtime, &b.it->mtime);
             break;
         default: // Name
@@ -2232,9 +2245,10 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
 
         ListView_SetItemText(m_hListView, row, 1, const_cast<wchar_t*>(L""));
         ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(L""));
         std::wstring folderType = I18n::Tr(IDS_TYPE_FOLDER);
-        ListView_SetItemText(m_hListView, row, 3, folderType.data());
-        ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(L""));
+        ListView_SetItemText(m_hListView, row, 4, folderType.data());
+        ListView_SetItemText(m_hListView, row, 5, const_cast<wchar_t*>(L""));
     }
 
     for (auto& r : rows) {
@@ -2259,10 +2273,22 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
         std::wstring packedStr = it.isDir ? L"" : FormatFileSize(it.packedSize);
         ListView_SetItemText(m_hListView, row, 2, const_cast<wchar_t*>(packedStr.c_str()));
 
+        // Ratio
+        {
+            wchar_t ratioStr[16] = {};
+            if (!it.isDir && it.size > 0 && it.packedSize > 0) {
+                UINT64 pct = (it.packedSize * 100 + it.size / 2) / it.size;
+                swprintf_s(ratioStr, L"%llu%%", pct);
+            } else if (!it.isDir && it.packedSize == 0) {
+                wcscpy_s(ratioStr, L"-");
+            }
+            ListView_SetItemText(m_hListView, row, 3, ratioStr);
+        }
+
         // Type
         std::wstring typeStr = it.isDir ? I18n::Tr(IDS_TYPE_FOLDER)
                              : (!it.method.empty() ? it.method : I18n::Tr(IDS_TYPE_FILE));
-        ListView_SetItemText(m_hListView, row, 3, const_cast<wchar_t*>(typeStr.c_str()));
+        ListView_SetItemText(m_hListView, row, 4, const_cast<wchar_t*>(typeStr.c_str()));
 
         // Date
         if (it.mtime.dwLowDateTime || it.mtime.dwHighDateTime) {
@@ -2271,9 +2297,9 @@ void MainWindow::PopulateList(const std::wstring& folderPath) {
             SYSTEMTIME st = {};
             FileTimeToSystemTime(&local, &st);
             wchar_t dateStr[64] = {};
-            swprintf_s(dateStr, L"%04d/%02d/%02d %02d:%02d",
-                       st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute);
-            ListView_SetItemText(m_hListView, row, 4, dateStr);
+            swprintf_s(dateStr, L"%04d/%02d/%02d %02d:%02d:%02d",
+                       st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+            ListView_SetItemText(m_hListView, row, 5, dateStr);
         }
     }
 

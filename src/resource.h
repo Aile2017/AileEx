@@ -164,6 +164,7 @@
 #define IDS_COL_PACKED                  11032
 #define IDS_COL_TYPE                    11033
 #define IDS_COL_MODIFIED                11034
+#define IDS_COL_RATIO                   11038
 #define IDS_TYPE_FOLDER                 11035
 #define IDS_TYPE_FILE                   11036
 #define IDS_FMT_TYPE_FILE_EXT           11037
