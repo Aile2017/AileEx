@@ -303,6 +303,7 @@ void MainWindow::OpenArchive(const wchar_t* path) {
 
     PopulateTree();
     PopulateList(L"");
+    UpdateExtractDestEdit();
 }
 
 // ---- WndProc dispatch ----
@@ -612,13 +613,31 @@ void MainWindow::CreateControls(HWND hwnd) {
         {4, ID_TEST,          TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
         {0, 0,                0,               BTNS_SEP,    {}, 0, 0},
         {5, ID_SETTINGS_DLG,  TBSTATE_ENABLED, BTNS_BUTTON, {}, 0, 0},
+        {0, 0,                0,               BTNS_SEP,    {}, 0, 0},  // separator before Extract to:
     };
     SendMessageW(m_hToolbar, TB_ADDBUTTONS, _countof(btns), (LPARAM)btns);
     SendMessageW(m_hToolbar, TB_AUTOSIZE, 0, 0);
 
+    // Toolbar-row extract destination controls ("Extract to:" label, edit box, [...] button)
+    m_hExtractLabel = CreateWindowExW(0, L"STATIC", L"Extract to:",
+        WS_CHILD | WS_VISIBLE | SS_CENTERIMAGE,
+        0, 0, 0, 0, hwnd, nullptr, hInst, nullptr);
+    m_hExtractEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+        WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+        0, 0, 0, 0, hwnd, nullptr, hInst, nullptr);
+    m_hExtractBrowse = CreateWindowExW(0, L"BUTTON", L"...",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        0, 0, 0, 0, hwnd, (HMENU)ID_TOOLBAR_BROWSE_DEST, hInst, nullptr);
+
+    UpdateExtractDestEdit();
+
     // Hide immediately at startup if hidden in settings
-    if (!m_toolbarVisible)
-        ShowWindow(m_hToolbar, SW_HIDE);
+    if (!m_toolbarVisible) {
+        ShowWindow(m_hToolbar,       SW_HIDE);
+        ShowWindow(m_hExtractLabel,  SW_HIDE);
+        ShowWindow(m_hExtractEdit,   SW_HIDE);
+        ShowWindow(m_hExtractBrowse, SW_HIDE);
+    }
 
     // Status bar
     m_hStatus = CreateWindowExW(0, STATUSCLASSNAME, L"",
@@ -684,7 +703,40 @@ void MainWindow::ResizePanes(int cx, int cy) {
         RECT rcTB = {};
         GetWindowRect(m_hToolbar, &rcTB);
         tbH = rcTB.bottom - rcTB.top;
-        SetWindowPos(m_hToolbar, nullptr, 0, 0, cx, tbH, SWP_NOZORDER);
+
+        // Resize toolbar to its natural button width only — NOT full window width.
+        // Keeping the toolbar window strictly within its button area prevents Z-order
+        // overlap with the extract-to controls, which would make them unclickable.
+        RECT rcLastBtn = {};
+        int btnCount = (int)SendMessageW(m_hToolbar, TB_BUTTONCOUNT, 0, 0);
+        if (btnCount > 0)
+            SendMessageW(m_hToolbar, TB_GETITEMRECT, btnCount - 1, (LPARAM)&rcLastBtn);
+        int tbNaturalW = (btnCount > 0) ? rcLastBtn.right : 0;
+        SetWindowPos(m_hToolbar, nullptr, 0, 0, tbNaturalW, tbH, SWP_NOZORDER);
+
+        // Position extract-to controls immediately to the right of the toolbar buttons.
+        // The trailing BTNS_SEP already provides the visual separator; tbNaturalW includes it.
+        constexpr int kLabelW  = 62;
+        constexpr int kBrowseW = 28;
+        constexpr int kEditH   = 22;
+        constexpr int kMargin  = 6;
+        int editY   = (tbH - kEditH) / 2;
+        int labelX  = tbNaturalW + kMargin;
+        int editX   = labelX + kLabelW + kMargin;
+        int editW   = cx - editX - kBrowseW - kMargin * 2;
+        if (editW < 40) editW = 40;
+        int browseX = editX + editW + kMargin;
+
+        ShowWindow(m_hExtractLabel,  SW_SHOW);
+        ShowWindow(m_hExtractEdit,   SW_SHOW);
+        ShowWindow(m_hExtractBrowse, SW_SHOW);
+        SetWindowPos(m_hExtractLabel,  nullptr, labelX,  editY, kLabelW, kEditH, SWP_NOZORDER);
+        SetWindowPos(m_hExtractEdit,   nullptr, editX,   editY, editW,   kEditH, SWP_NOZORDER);
+        SetWindowPos(m_hExtractBrowse, nullptr, browseX, editY, kBrowseW,kEditH, SWP_NOZORDER);
+    } else {
+        ShowWindow(m_hExtractLabel,  SW_HIDE);
+        ShowWindow(m_hExtractEdit,   SW_HIDE);
+        ShowWindow(m_hExtractBrowse, SW_HIDE);
     }
 
     // Status bar
@@ -717,10 +769,29 @@ void MainWindow::ApplyFontToControls() {
                           fontName.c_str());
 
     if (m_hFont) {
-        if (m_hTreeView)  SendMessageW(m_hTreeView,  WM_SETFONT, (WPARAM)m_hFont, FALSE);
-        if (m_hListView)  SendMessageW(m_hListView,  WM_SETFONT, (WPARAM)m_hFont, FALSE);
-        if (m_hToolbar)   SendMessageW(m_hToolbar,   WM_SETFONT, (WPARAM)m_hFont, FALSE);
-        if (m_hStatus)    SendMessageW(m_hStatus,    WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hTreeView)      SendMessageW(m_hTreeView,      WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hListView)      SendMessageW(m_hListView,      WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hToolbar)       SendMessageW(m_hToolbar,       WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hStatus)        SendMessageW(m_hStatus,        WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hExtractLabel)  SendMessageW(m_hExtractLabel,  WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hExtractEdit)   SendMessageW(m_hExtractEdit,   WM_SETFONT, (WPARAM)m_hFont, FALSE);
+        if (m_hExtractBrowse) SendMessageW(m_hExtractBrowse, WM_SETFONT, (WPARAM)m_hFont, FALSE);
+    }
+}
+
+void MainWindow::UpdateExtractDestEdit() {
+    if (!m_hExtractEdit) return;
+    const auto& st = App::Instance().GetSettings();
+    if (st.GetOutputDirModeFixed()) {
+        SetWindowTextW(m_hExtractEdit, st.GetDefaultOutputDir().c_str());
+    } else {
+        // Same-as-source mode: show the archive's parent directory, or empty if none open.
+        std::wstring dir;
+        if (!m_archivePath.empty()) {
+            auto sl = m_archivePath.find_last_of(L"\\/");
+            dir = (sl != std::wstring::npos) ? m_archivePath.substr(0, sl) : L"";
+        }
+        SetWindowTextW(m_hExtractEdit, dir.c_str());
     }
 }
 
@@ -858,6 +929,13 @@ void MainWindow::OnCommand(WORD id) {
     case IDM_HELP_ABOUT:
         OnAbout();
         break;
+    case ID_TOOLBAR_BROWSE_DEST: {
+        wchar_t path[MAX_PATH] = {};
+        GetWindowTextW(m_hExtractEdit, path, MAX_PATH);
+        if (BrowseFolderDialog(m_hwnd, IDS_TITLE_SELECT_DEST_FOLDER, path, MAX_PATH))
+            SetWindowTextW(m_hExtractEdit, path);
+        break;
+    }
     default:
         if (id >= IDM_FILE_MRU_BASE && id <= IDM_FILE_MRU_LAST)
             OnMruOpen(id - IDM_FILE_MRU_BASE);
@@ -1004,7 +1082,9 @@ void MainWindow::OnOpenAssoc() {
     // Extract single file to temp dir
     std::vector<UINT32> indices = { idx };
     HRESULT hr = app.Get7z().Extract(m_effectiveArchivePath.c_str(), indices,
-                                      tempDir.c_str(), nullptr, nullptr);
+                                      tempDir.c_str(),
+                                      m_password.empty() ? nullptr : m_password.c_str(),
+                                      nullptr);
     if (FAILED(hr)) {
         ShowError(I18n::Tr(IDS_ERR_EXTRACT_FILE_FAILED).c_str(), hr);
         return;
@@ -1025,9 +1105,9 @@ void MainWindow::OnOpenAssoc() {
     }
 }
 
-void MainWindow::OnExtract() {
+void MainWindow::OnExtract(const std::wstring& presetDest) {
     if (m_archivePath.empty()) return;
-    RunExtraction({}, {});
+    RunExtraction({}, {}, presetDest);
 }
 
 void MainWindow::TriggerExtract(const std::wstring& presetDest) {
@@ -1037,13 +1117,16 @@ void MainWindow::TriggerExtract(const std::wstring& presetDest) {
 
 void MainWindow::OnExtractSmart() {
     if (m_archivePath.empty()) return;
+    wchar_t buf[MAX_PATH] = {};
+    if (m_hExtractEdit) GetWindowTextW(m_hExtractEdit, buf, MAX_PATH);
+    std::wstring dest = buf;
     if (ListView_GetSelectedCount(m_hListView) > 0)
-        OnExtractSelected();
+        OnExtractSelected(dest);
     else
-        OnExtract();
+        OnExtract(dest);
 }
 
-void MainWindow::OnExtractSelected() {
+void MainWindow::OnExtractSelected(const std::wstring& presetDest) {
     if (m_archivePath.empty()) return;
 
     // Resolve lParam to real archive index.
@@ -1086,7 +1169,7 @@ void MainWindow::OnExtractSelected() {
     std::set<std::wstring> rarTargetPaths;
     for (UINT32 idx : indices) rarTargetPaths.insert(m_items[idx].path);
 
-    RunExtraction(std::move(indices), std::move(rarTargetPaths));
+    RunExtraction(std::move(indices), std::move(rarTargetPaths), presetDest);
 }
 
 void MainWindow::RunExtraction(std::vector<UINT32> indices, std::set<std::wstring> rarTargetPaths,
@@ -1568,6 +1651,7 @@ void MainWindow::CloseArchive() {
 
     SetWindowTextW(m_hwnd, L"AileEx");
     if (m_hStatus) SetWindowTextW(m_hStatus, L"");
+    UpdateExtractDestEdit();
 }
 
 void MainWindow::OnProgress(int pct, wchar_t* filename) {

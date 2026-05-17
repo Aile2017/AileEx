@@ -36,8 +36,8 @@ private:
     void OnCommand(WORD id);
     void OnTreeSelChanged();
     void OnListDblClick();
-    void OnExtract();
-    void OnExtractSelected();
+    void OnExtract(const std::wstring& presetDest = L"");
+    void OnExtractSelected(const std::wstring& presetDest = L"");
     // Toolbar extract: extract selected items if any are selected, otherwise extract all.
     void OnExtractSmart();
     // Common extraction driver. indices empty = extract all (7z path).
@@ -83,9 +83,14 @@ private:
     // Returns entered password, or empty string if user cancelled.
     std::wstring PromptPassword();
     void ApplyFontToControls();
+    // Refresh the "Extract to:" edit box to reflect the current archive + settings state.
+    void UpdateExtractDestEdit();
 
     HWND        m_hwnd         = nullptr;
     HWND        m_hToolbar     = nullptr;
+    HWND        m_hExtractLabel  = nullptr;  // "Extract to:" label in toolbar row
+    HWND        m_hExtractEdit   = nullptr;  // path edit box in toolbar row
+    HWND        m_hExtractBrowse = nullptr;  // [...] browse button in toolbar row
     HWND        m_hTreeView    = nullptr;
     HWND        m_hListView    = nullptr;
     HWND        m_hStatus      = nullptr;

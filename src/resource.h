@@ -110,6 +110,7 @@
 #define ID_EXTRACT_SELECTED 40016
 #define ID_ADD_TO_CURRENT   40018  // Add files to the currently open archive
 #define ID_EXTRACT_SMART    40020  // Toolbar extract: selected items if any, else all
+#define ID_TOOLBAR_BROWSE_DEST 40021  // Browse button for toolbar extract-to path
 
 // Menu-only commands (Phase 1 menubar)
 #define IDM_FILE_OPEN       40010
