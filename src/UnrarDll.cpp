@@ -3,6 +3,13 @@
 #include "resource.h"
 #include <shlwapi.h>
 
+// Normalize path: convert backslashes to forward slashes and trim trailing slashes
+static std::wstring NormalizePath(std::wstring path) {
+    for (auto& c : path) if (c == L'\\') c = L'/';
+    while (!path.empty() && path.back() == L'/') path.pop_back();
+    return path;
+}
+
 // Auto-detect UnRAR64.dll / UnRAR.dll from known install paths.
 std::wstring UnrarDll::FindUnrarDll() {
     struct { const wchar_t* env; const wchar_t* suffix; } candidates[] = {
@@ -99,9 +106,7 @@ bool UnrarDll::ExtractArchiveSelected(const wchar_t* path, const wchar_t* destDi
         if (sink && sink->IsCancelled()) { m_pfnClose(hArc); return false; }
 
         // Normalize path and match against the target set
-        std::wstring normalPath = hdr.FileNameW;
-        for (auto& c : normalPath) if (c == L'\\') c = L'/';
-        while (!normalPath.empty() && normalPath.back() == L'/') normalPath.pop_back();
+        std::wstring normalPath = NormalizePath(hdr.FileNameW);
 
         bool extract = (targetPaths.count(normalPath) > 0);
         if (extract && sink) sink->OnProgress(totalDone, hdr.FileNameW);
@@ -143,10 +148,8 @@ bool UnrarDll::ListArchive(const wchar_t* path, std::vector<ArchiveItem>& items,
     int res;
     while ((res = m_pfnRead(hArc, &hdr)) == ERAR_SUCCESS) {
         ArchiveItem it;
-        it.path = hdr.FileNameW;
         // Normalize to forward slashes (matches SevenZip::OpenArchive convention)
-        for (auto& c : it.path) if (c == L'\\') c = L'/';
-        while (!it.path.empty() && it.path.back() == L'/') it.path.pop_back();
+        it.path = NormalizePath(hdr.FileNameW);
 
         auto slash = it.path.rfind(L'/');
         it.name       = (slash != std::wstring::npos) ? it.path.substr(slash + 1) : it.path;
@@ -279,7 +282,6 @@ bool UnrarDll::ExtractArchive(const wchar_t* path, const wchar_t* destDir,
     if (!hArc || od.OpenResult != ERAR_SUCCESS) return false;
 
     if (m_pfnSetCb && password && password[0]) {
-        struct Ctx { const wchar_t* pw; };
         // RARSetCallback uses UNRARCALLBACK: int CALLBACK(UINT, LPARAM, LPARAM, LPARAM)
         // UCM_NEEDPASSWORDW: P1=wchar_t* buf, P2=buf size in chars
         auto cb = [](UINT msg, LPARAM ud, LPARAM p1, LPARAM p2) -> int {

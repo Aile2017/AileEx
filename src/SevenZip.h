@@ -154,6 +154,7 @@ public:
 private:
     HMODULE                      m_hDll               = nullptr;
     std::wstring                 m_loadedName;
+    std::wstring                 m_loadedPath;        // Full path to loaded DLL (for caching codec enumeration)
     Func_CreateObject            m_pfnCreateObject    = nullptr;
     Func_GetNumberOfMethods      m_pfnGetNumMethods   = nullptr;
     Func_GetMethodProperty       m_pfnGetMethodProp   = nullptr;
@@ -162,6 +163,24 @@ private:
     std::vector<std::wstring>    m_encoderNames;   // lowercased; populated by EnumerateCodecs()
     std::map<std::wstring, GUID> m_extToClsid;     // extension (lowercase) → CLSID
     std::vector<WritableFormat>  m_writableFormats; // writable formats (for UI)
+    // Cache: path → actual format CLSID after RAR5→RAR4 fallback detection
+    std::map<std::wstring, GUID> m_pathFormatCache;
+    // Cache: (path + password_hash + format_guid) → ArchiveItem vector
+    // Keyed as: std::wstring composed of path + "|" + password_hash + "|" + guid_hex
+    // Limit: 100 entries (oldest evicted)
+    struct CacheEntry {
+        std::vector<ArchiveItem> items;
+        int order;  // for LRU eviction
+    };
+    std::map<std::wstring, CacheEntry> m_itemsCache;
+    int m_cacheOrder = 0;
+    static constexpr int MAX_CACHE_ENTRIES = 100;
+    
+    // Build cache key from path, password, and format GUID
+    static std::wstring BuildCacheKey(const wchar_t* path, const wchar_t* password, const GUID& fmt);
+    
+    // Hash password to short string (for cache key)
+    static UINT32 HashPassword(const wchar_t* password);
 
     void EnumerateCodecs();
     void EnumerateFormats();
@@ -170,5 +189,9 @@ private:
     HRESULT CreateOutArchive(const GUID& clsid, IOutArchive** ppArc);
     GUID FormatToInGuid(const wchar_t* path) const;
     GUID FormatToOutGuid(const wchar_t* format) const;
+    // Open archive with RAR5→RAR4 fallback, caching result for future calls
+    HRESULT OpenArchiveWithFallback(const wchar_t* path, const GUID& primaryGuid,
+                                    IInStream* fileSpec, const UInt64& maxCheck,
+                                    IArchiveOpenCallback* openCb, IInArchive*& archive);
     static std::wstring ExtOfPath(const wchar_t* path);
 };

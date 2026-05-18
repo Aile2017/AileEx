@@ -308,9 +308,9 @@ bool RarProcess::Add(const wchar_t* archivePath,
             cmd += L" -p" + quotePw(pw);
     }
 
-    // -ap<folder>: specify destination folder in archive (`/` normalized to `\`)
+    // -ap<folder>: specify destination folder in archive
     if (archiveFolder && archiveFolder[0]) {
-        std::wstring folder = archiveFolder;
+        std::wstring folder(archiveFolder);
         for (auto& c : folder) if (c == L'/') c = L'\\';
         while (!folder.empty() && folder.back() == L'\\') folder.pop_back();
         if (!folder.empty())

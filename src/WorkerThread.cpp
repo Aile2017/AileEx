@@ -23,8 +23,12 @@ void ProgressPostSink::OnProgress(UINT64 done, const wchar_t* currentFile) {
 
     int pct = (m_total > 0) ? (int)(done * 100 / m_total) : 0;
     if (pct > 100) pct = 100;
+    // Only allocate _wcsdup after PostMessage succeeds to avoid leaks on queue overflow.
     wchar_t* copy = currentFile ? _wcsdup(currentFile) : nullptr;
-    PostMessageW(m_hwnd, m_progressMsg, (WPARAM)pct, (LPARAM)copy);
+    if (!PostMessageW(m_hwnd, m_progressMsg, (WPARAM)pct, (LPARAM)copy)) {
+        // PostMessage failed (e.g., window destroyed, queue full): free the copy.
+        free(copy);
+    }
 }
 
 bool ProgressPostSink::IsCancelled() const {

@@ -257,7 +257,11 @@ bool SevenZip::Load(const wchar_t* dllPath) {
     GetModuleFileNameW(m_hDll, nameBuf, MAX_PATH);
     const wchar_t* leaf = wcsrchr(nameBuf, L'\\');
     m_loadedName = leaf ? (leaf + 1) : nameBuf;
-    // Enumerate codecs if available
+    
+    // Store full path for codec enumeration caching
+    m_loadedPath = nameBuf;
+    
+    // Enumerate codecs if available (only if DLL path changed)
     m_pfnGetNumMethods   = (Func_GetNumberOfMethods)GetProcAddress(m_hDll, "GetNumberOfMethods");
     m_pfnGetMethodProp   = (Func_GetMethodProperty)GetProcAddress(m_hDll, "GetMethodProperty");
     m_pfnGetNumFormats   = (Func_GetNumberOfFormats)GetProcAddress(m_hDll, "GetNumberOfFormats");
@@ -275,6 +279,7 @@ std::wstring SevenZip::GetLoadedPath() const {
 
 void SevenZip::Unload() {
     if (m_hDll) { FreeLibrary(m_hDll); m_hDll = nullptr; }
+    m_loadedPath.clear();
     m_pfnCreateObject    = nullptr;
     m_pfnGetNumMethods   = nullptr;
     m_pfnGetMethodProp   = nullptr;
@@ -283,7 +288,37 @@ void SevenZip::Unload() {
     m_encoderNames.clear();
     m_extToClsid.clear();
     m_writableFormats.clear();
+    m_pathFormatCache.clear();
+    m_itemsCache.clear();
 }
+
+// ============================================================
+// Archive item caching helpers
+// ============================================================
+
+UINT32 SevenZip::HashPassword(const wchar_t* password) {
+    if (!password || !*password) return 0;
+    UINT32 hash = 5381;
+    for (const wchar_t* p = password; *p; p++) {
+        hash = ((hash << 5) + hash) ^ (UINT32)*p;
+    }
+    return hash;
+}
+
+std::wstring SevenZip::BuildCacheKey(const wchar_t* path, const wchar_t* password, const GUID& fmt) {
+    UINT32 pwdHash = HashPassword(password);
+    // Format GUID hex: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
+    wchar_t guidHex[40];
+    swprintf_s(guidHex, L"%08X%04X%04X%02X%02X%02X%02X%02X%02X%02X%02X",
+               fmt.Data1, fmt.Data2, fmt.Data3,
+               fmt.Data4[0], fmt.Data4[1], fmt.Data4[2], fmt.Data4[3],
+               fmt.Data4[4], fmt.Data4[5], fmt.Data4[6], fmt.Data4[7]);
+    
+    wchar_t key[2048];
+    swprintf_s(key, L"%s|%u|%s", path, pwdHash, guidHex);
+    return key;
+}
+
 
 // ============================================================
 // Codec enumeration
@@ -523,6 +558,50 @@ private:
     LONG            m_refCount = 1;
 };
 // ============================================================
+// OpenArchiveWithFallback — unified RAR5→RAR4 fallback logic with caching
+// ============================================================
+
+HRESULT SevenZip::OpenArchiveWithFallback(const wchar_t* path, const GUID& primaryGuid,
+                                          IInStream* fileSpec, const UInt64& maxCheck,
+                                          IArchiveOpenCallback* openCb, IInArchive*& archive) {
+    archive = nullptr;
+
+    // Check cache: if this path was already opened before, use cached format
+    auto cacheIt = m_pathFormatCache.find(path);
+    GUID formatGuid = (cacheIt != m_pathFormatCache.end()) ? cacheIt->second : primaryGuid;
+
+    // Try primary (or cached) format
+    HRESULT hr = CreateInArchive(formatGuid, &archive);
+    if (FAILED(hr) || !archive) return FAILED(hr) ? hr : E_FAIL;
+
+    hr = archive->Open(fileSpec, &maxCheck, openCb);
+
+    // S_FALSE means "not this format"; try fallback for RAR5→RAR4
+    if ((FAILED(hr) || hr == S_FALSE) && IsEqualGUID(formatGuid, CLSID_Format_Rar5)) {
+        archive->Release();
+        archive = nullptr;
+
+        hr = CreateInArchive(CLSID_Format_Rar, &archive);
+        if (SUCCEEDED(hr) && archive) {
+            fileSpec->Seek(0, 0, nullptr);  // rewind
+            hr = archive->Open(fileSpec, &maxCheck, openCb);
+
+            // Cache the detected format for future calls
+            if (SUCCEEDED(hr) && archive) {
+                m_pathFormatCache[path] = CLSID_Format_Rar;  // RAR4 successful
+            }
+        }
+    }
+
+    // If cache was used but format matched, no need to update
+    if (cacheIt == m_pathFormatCache.end() && SUCCEEDED(hr) && archive) {
+        m_pathFormatCache[path] = formatGuid;  // Cache the successful format
+    }
+
+    return (FAILED(hr) || hr == S_FALSE) ? (FAILED(hr) ? hr : E_FAIL) : S_OK;
+}
+
+// ============================================================
 // OpenArchive — enumerate all entries into items vector
 // ============================================================
 
@@ -553,46 +632,49 @@ HRESULT SevenZip::OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& ite
         }
     }
 
-    // Try primary format (from extension); for RAR also try old format
+    // Try primary format (from extension); for RAR also try old format (with caching)
     IInArchive* archive = nullptr;
     GUID primaryGuid = FormatToInGuid(path);
-    HRESULT hr = CreateInArchive(primaryGuid, &archive);
-
-    if (FAILED(hr) || !archive) {
-        fileSpec->Release();
-        return FAILED(hr) ? hr : E_FAIL;
-    }
-
-    // Open archive
+    HRESULT hr = S_OK;
+    
     const UInt64 maxCheck = 1ULL << 23;
     if (isSplit) {
         COpenVolumeCallback* volCb = new COpenVolumeCallback(path, password);
-        hr = archive->Open(fileSpec, &maxCheck, volCb);
+        hr = OpenArchiveWithFallback(path, primaryGuid, fileSpec, maxCheck, volCb, archive);
         volCb->Release();
     } else {
         COpenCallback* openCb = new COpenCallback(password);
-        hr = archive->Open(fileSpec, &maxCheck, openCb);
+        hr = OpenArchiveWithFallback(path, primaryGuid, fileSpec, maxCheck, openCb, archive);
         openCb->Release();
-    }
-
-    // S_FALSE means "not this format"; treat it like failure for fallback purposes
-    // If RAR5 mismatched, try RAR4
-    if ((FAILED(hr) || hr == S_FALSE) && IsEqualGUID(primaryGuid, CLSID_Format_Rar5)) {
-        archive->Release();
-        hr = CreateInArchive(CLSID_Format_Rar, &archive);
-        if (SUCCEEDED(hr) && archive) {
-            fileSpec->Seek(0, 0, nullptr);  // rewind
-            COpenCallback* cb2 = new COpenCallback(password);
-            hr = archive->Open(fileSpec, &maxCheck, cb2);
-            cb2->Release();
-        }
     }
 
     fileSpec->Release();
 
-    if (FAILED(hr) || hr == S_FALSE) {
+    if (FAILED(hr)) {
         if (archive) archive->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
+    }
+
+    // Build cache key: need actual format GUID after potential fallback
+    // If path is in m_pathFormatCache, we had a RAR5→RAR4 fallback
+    std::wstring cacheKey;
+    GUID actualFormat = primaryGuid;
+    {
+        auto it = m_pathFormatCache.find(path);
+        if (it != m_pathFormatCache.end()) {
+            actualFormat = it->second;
+        }
+        cacheKey = BuildCacheKey(path, password, actualFormat);
+    }
+
+    // Try cache lookup before enumeration
+    {
+        auto cacheIt = m_itemsCache.find(cacheKey);
+        if (cacheIt != m_itemsCache.end()) {
+            items = cacheIt->second.items;
+            archive->Release();
+            return S_OK;
+        }
     }
 
     // Enumerate items
@@ -600,18 +682,22 @@ HRESULT SevenZip::OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& ite
     archive->GetNumberOfItems(&count);
     items.reserve(count);
 
+    // Reusable PROPVARIANT buffer for batch GetProperty calls
+    PROPVARIANT prop;
+
     for (UInt32 i = 0; i < count; ++i) {
         ArchiveItem it;
         it.index = i;
 
-        PROPVARIANT prop;
-
-        // Path
+        // Path: read once, normalize immediately
         PropVariantInit(&prop);
         archive->GetProperty(i, kpidPath, &prop);
         if (prop.vt == VT_BSTR && prop.bstrVal) {
             it.path = prop.bstrVal;
+            // Normalize: convert backslashes to forward slashes
             for (auto& c : it.path) if (c == L'\\') c = L'/';
+            // Strip trailing slashes (normalized already)
+            while (!it.path.empty() && it.path.back() == L'/') it.path.pop_back();
         }
         PropVariantClear(&prop);
 
@@ -621,10 +707,7 @@ HRESULT SevenZip::OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& ite
         it.isDir = (prop.vt == VT_BOOL && prop.boolVal != VARIANT_FALSE);
         PropVariantClear(&prop);
 
-        // Strip trailing slash from directory paths
-        while (!it.path.empty() && it.path.back() == L'/') it.path.pop_back();
-
-        // Leaf name
+        // Leaf name: compute from already-normalized path
         auto slash = it.path.rfind(L'/');
         it.name = (slash != std::wstring::npos) ? it.path.substr(slash + 1) : it.path;
 
@@ -841,6 +924,38 @@ HRESULT SevenZip::OpenArchive(const wchar_t* path, std::vector<ArchiveItem>& ite
         }
     }
 
+    // Cache the enumerated items (after all potential tar/split unwrapping)
+    {
+        // Re-verify cache key in case tar/split operations changed things
+        std::wstring cacheKey;
+        GUID actualFormat = primaryGuid;
+        {
+            auto it = m_pathFormatCache.find(path);
+            if (it != m_pathFormatCache.end()) {
+                actualFormat = it->second;
+            }
+            cacheKey = BuildCacheKey(path, password, actualFormat);
+        }
+        
+        // Add to cache with eviction if needed
+        if (m_itemsCache.size() >= MAX_CACHE_ENTRIES) {
+            // Find and erase oldest entry
+            int minOrder = INT_MAX;
+            auto oldestIt = m_itemsCache.end();
+            for (auto it = m_itemsCache.begin(); it != m_itemsCache.end(); ++it) {
+                if (it->second.order < minOrder) {
+                    minOrder = it->second.order;
+                    oldestIt = it;
+                }
+            }
+            if (oldestIt != m_itemsCache.end()) {
+                m_itemsCache.erase(oldestIt);
+            }
+        }
+        
+        m_itemsCache[cacheKey] = { items, ++m_cacheOrder };
+    }
+
     archive->Release();
     return S_OK;
 }
@@ -975,25 +1090,14 @@ HRESULT SevenZip::GetArchiveComment(const wchar_t* path,
 
     const UInt64 maxCheck = 1ULL << 23;
     COpenCallback* openCb = new COpenCallback(password);
-    hr = archive->Open(fileSpec, &maxCheck, openCb);
+    hr = OpenArchiveWithFallback(path, primaryGuid, fileSpec, maxCheck, openCb, archive);
     openCb->Release();
-
-    if ((FAILED(hr) || hr == S_FALSE) && IsEqualGUID(primaryGuid, CLSID_Format_Rar5)) {
-        archive->Release();
-        hr = CreateInArchive(CLSID_Format_Rar, &archive);
-        if (SUCCEEDED(hr) && archive) {
-            fileSpec->Seek(0, 0, nullptr);
-            COpenCallback* cb2 = new COpenCallback(password);
-            hr = archive->Open(fileSpec, &maxCheck, cb2);
-            cb2->Release();
-        }
-    }
 
     fileSpec->Release();
 
-    if (FAILED(hr) || hr == S_FALSE) {
+    if (FAILED(hr)) {
         if (archive) archive->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
     }
 
     PROPVARIANT prop;
@@ -1184,26 +1288,14 @@ HRESULT SevenZip::GetArchiveProperties(const wchar_t* path,
 
     const UInt64 maxCheck = 1ULL << 23;
     COpenCallback* openCb = new COpenCallback(password);
-    hr = archive->Open(fileSpec, &maxCheck, openCb);
+    hr = OpenArchiveWithFallback(path, primaryGuid, fileSpec, maxCheck, openCb, archive);
     openCb->Release();
-
-    // RAR5 mismatch → fall back to RAR4 (same behaviour as OpenArchive)
-    if ((FAILED(hr) || hr == S_FALSE) && IsEqualGUID(primaryGuid, CLSID_Format_Rar5)) {
-        archive->Release();
-        hr = CreateInArchive(CLSID_Format_Rar, &archive);
-        if (SUCCEEDED(hr) && archive) {
-            fileSpec->Seek(0, 0, nullptr);
-            COpenCallback* cb2 = new COpenCallback(password);
-            hr = archive->Open(fileSpec, &maxCheck, cb2);
-            cb2->Release();
-        }
-    }
 
     fileSpec->Release();
 
-    if (FAILED(hr) || hr == S_FALSE) {
+    if (FAILED(hr)) {
         if (archive) archive->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
     }
 
     // ---- Enumerate archive-level properties ----
@@ -1940,30 +2032,18 @@ HRESULT SevenZip::Test(const wchar_t* archivePath,
     const UInt64 maxCheck = 1ULL << 23;
     if (isSplit) {
         COpenVolumeCallback* volCb = new COpenVolumeCallback(archivePath, password);
-        hr = archive->Open(fileSpec, &maxCheck, volCb);
+        hr = OpenArchiveWithFallback(archivePath, clsid, fileSpec, maxCheck, volCb, archive);
         volCb->Release();
     } else {
         COpenCallback* openCb = new COpenCallback(password);
-        hr = archive->Open(fileSpec, &maxCheck, openCb);
+        hr = OpenArchiveWithFallback(archivePath, clsid, fileSpec, maxCheck, openCb, archive);
         openCb->Release();
     }
 
-    // RAR5 mismatch → fall back to RAR4 (same approach as Extract)
-    if ((FAILED(hr) || hr == S_FALSE) && IsEqualGUID(clsid, CLSID_Format_Rar5)) {
-        archive->Release(); archive = nullptr;
-        hr = CreateInArchive(CLSID_Format_Rar, &archive);
-        if (SUCCEEDED(hr) && archive) {
-            fileSpec->Seek(0, 0, nullptr);
-            COpenCallback* cb2 = new COpenCallback(password);
-            hr = archive->Open(fileSpec, &maxCheck, cb2);
-            cb2->Release();
-        }
-    }
-
     fileSpec->Release();
-    if (FAILED(hr) || hr == S_FALSE) {
+    if (FAILED(hr)) {
         if (archive) archive->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
     }
 
     CTestCallback* cb = new CTestCallback(archive, password, sink);
@@ -2012,30 +2092,18 @@ HRESULT SevenZip::Extract(const wchar_t* archivePath,
     const UInt64 maxCheck = 1ULL << 23;
     if (isSplit) {
         COpenVolumeCallback* volCb = new COpenVolumeCallback(archivePath, password);
-        hr = archive->Open(fileSpec, &maxCheck, volCb);
+        hr = OpenArchiveWithFallback(archivePath, clsid, fileSpec, maxCheck, volCb, archive);
         volCb->Release();
     } else {
         COpenCallback* openCb = new COpenCallback(password);
-        hr = archive->Open(fileSpec, &maxCheck, openCb);
+        hr = OpenArchiveWithFallback(archivePath, clsid, fileSpec, maxCheck, openCb, archive);
         openCb->Release();
     }
 
-    // Fallback: RAR5 mismatched (FAILED or S_FALSE) → try RAR4
-    if ((FAILED(hr) || hr == S_FALSE) && IsEqualGUID(clsid, CLSID_Format_Rar5)) {
-        archive->Release(); archive = nullptr;
-        hr = CreateInArchive(CLSID_Format_Rar, &archive);
-        if (SUCCEEDED(hr) && archive) {
-            fileSpec->Seek(0, 0, nullptr);
-            COpenCallback* cb2 = new COpenCallback(password);
-            hr = archive->Open(fileSpec, &maxCheck, cb2);
-            cb2->Release();
-        }
-    }
-
     fileSpec->Release();
-    if (FAILED(hr) || hr == S_FALSE) {
+    if (FAILED(hr)) {
         if (archive) archive->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
     }
 
     // Ensure destination directory exists
@@ -2583,12 +2651,13 @@ HRESULT SevenZip::DeleteItems(const wchar_t* archivePath,
 
     COpenCallback* openCb = new COpenCallback(password);
     const UInt64 maxCheck = 1ULL << 23;
-    hr = inArc->Open(inFile, &maxCheck, openCb);
+    hr = OpenArchiveWithFallback(archivePath, clsid, inFile, maxCheck, openCb, inArc);
     openCb->Release();
     inFile->Release();
-    if (FAILED(hr) || hr == S_FALSE) {
+
+    if (FAILED(hr)) {
         inArc->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
     }
 
     UInt32 totalItems = 0;
@@ -2810,12 +2879,13 @@ HRESULT SevenZip::AddToArchive(const wchar_t* archivePath,
 
     COpenCallback* openCb = new COpenCallback(password);
     const UInt64 maxCheck = 1ULL << 23;
-    hr = inArc->Open(inFile, &maxCheck, openCb);
+    hr = OpenArchiveWithFallback(archivePath, clsid, inFile, maxCheck, openCb, inArc);
     openCb->Release();
     inFile->Release();
-    if (FAILED(hr) || hr == S_FALSE) {
+
+    if (FAILED(hr)) {
         inArc->Release();
-        return FAILED(hr) ? hr : E_FAIL;
+        return hr;
     }
 
     // 2. Get IOutArchive (E_NOINTERFACE for write-unsupported formats)
